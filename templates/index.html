@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Murf AI Voice Suite</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+</head>
+<body>
+  <div class="container">
+    
+    <div class="header">
+      <h1>Talk to your AI assistant</h1>
+      <p>Tap the mic, speak naturally, and hear back an instant Murf voice reply.</p>
+    </div>
+
+
+    <div class="feature-section">
+      <div class="feature-title">
+        <i class="fas fa-microphone-alt"></i>
+        <h2>Conversational Agent</h2>
+      </div>
+
+      <div class="agent-controls">
+        <button id="recordToggle" class="record-btn" type="button" onclick="toggleRecording()" aria-pressed="false" aria-label="Record or stop">
+          <span class="record-icon"><i class="fas fa-microphone"></i></span>
+          <span id="recordLabel">Start Talking</span>
+          <span class="vu" aria-hidden="true">
+            <span class="bar b1"></span>
+            <span class="bar b2"></span>
+            <span class="bar b3"></span>
+          </span>
+        </button>
+        <select id="replyVoice" class="voice-select" aria-label="Select reply voice">
+          <option value="en-US-natalie" selected>Natalie · US</option>
+          <option value="en-IN-ashwin">Ashwin · IN</option>
+          <option value="en-GB-harry">Harry · UK</option>
+        </select>
+        <button id="autoToggle" class="btn btn-accent" onclick="toggleAutoStream()">
+          <i class="fas fa-bolt"></i> Enable Auto-Stream
+        </button>
+      </div>
+
+      <div id="uploadStatus" class="status-text"></div
+      <div id="typingIndicator" class="typing" style="display:none" aria-live="polite" aria-label="AI is speaking">
+        <span></span><span></span><span></span>
+      </div
+
+      <!-- Hidden audio element for AI replies (autoplays) -->
+      <audio id="replyAudio" preload="auto" style="display:none;"></audio>
+    </div>
+
+  <div id="chatBubble" class="chat-bubble" style="display:none; margin-top: 1em;">
+    <div class="user-msg"><strong>🧑 You:</strong> <span id="bubbleUser"></span></div>
+    <div class="ai-msg"><strong>🤖 AI:</strong> <span id="bubbleAI"></span></div>
+  </div>
+
+  <div id="chatHistoryCard" class="chat-history-card" style="margin-top: 1.5em;">
+    <div class="history-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+      <span>⚡ Real-Time Chat History:</span>
+      <div style="display:flex; gap:8px;">
+        <button id="clearHistoryBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="clearHistory()">
+          <i class="fas fa-broom"></i> Clear
+        </button>
+        <button id="scrollTopBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="scrollHistoryToTop()">
+          <i class="fas fa-arrow-up"></i> Top
+        </button>
+        <button id="scrollBottomBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="scrollHistoryToBottom()">
+          <i class="fas fa-arrow-down"></i> Bottom
+        </button>
+      </div>
+    </div>
+    <div id="historyList" class="chat-history-list"></div>
+  </div>
+
+
+  <script>
+    // Persist and read chat session id via URL query param (?session=...)
+    function getOrCreateSessionId() {
+      const url = new URL(window.location.href);
+      let session = url.searchParams.get('session');
+      if (!session) {
+        session = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+        url.searchParams.set('session', session);
+        window.history.replaceState({}, '', url.toString());
+      }
+      return session;
+    }
+
+    let mediaRecorder;
+    let recordedChunks = [];
+    let autoStream = false;
+    let micStream;
+    let isRecording = false;
+
+    // VU meter
+    let audioCtx;
+    let analyser;
+    let vuRAF;
+
+    async function toggleRecording() {
+      const btn = document.getElementById('recordToggle');
+      const label = document.getElementById('recordLabel');
+      if (!isRecording) {
+        // Start
+        recordedChunks = [];
+        btn.classList.add('recording');
+        btn.setAttribute('aria-pressed', 'true');
+        label.textContent = 'Listening... Tap to stop';
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Setup VU
+          startVU(micStream);
+          // Recorder
+          mediaRecorder = new MediaRecorder(micStream);
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) recordedChunks.push(event.data);
+          };
+          mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+            // Cleanup mic/VU
+            try { micStream.getTracks().forEach(t => t.stop()); } catch {}
+            stopVU();
+            btn.classList.remove('recording');
+            btn.setAttribute('aria-pressed', 'false');
+            isRecording = false;
+            label.textContent = 'Start Talking';
+            uploadAudio(blob);
+          };
+          mediaRecorder.start();
+          isRecording = true;
+        } catch (error) {
+          alert('Microphone access error: ' + error.message);
+          btn.classList.remove('recording');
+          btn.setAttribute('aria-pressed', 'false');
+          isRecording = false;
+          label.textContent = 'Start Talking';
+        }
+      } else {
+        // Stop
+        try { mediaRecorder && mediaRecorder.state !== 'inactive' && mediaRecorder.stop(); } catch {}
+      }
+    }
+
+    function toggleAutoStream() {
+      autoStream = !autoStream;
+      const btn = document.getElementById('autoToggle');
+      btn.innerHTML = autoStream ? '<i class="fas fa-bolt"></i> Disable Auto-Stream' : '<i class="fas fa-bolt"></i> Enable Auto-Stream';
+    }
+
+    async function uploadAudio(blob) {
+      const formData = new FormData();
+      formData.append('file', blob, 'recording.webm');
+      const voiceSel = document.getElementById('replyVoice');
+      if (voiceSel && voiceSel.value) formData.append('voice_id', voiceSel.value);
+
+      const status = document.getElementById('uploadStatus');
+      const bubble = document.getElementById('chatBubble');
+      const bubbleUser = document.getElementById('bubbleUser');
+      const bubbleAI = document.getElementById('bubbleAI');
+      const replyAudio = document.getElementById('replyAudio');
+
+      status.textContent = 'Processing with AI...';
+      status.className = 'status-text pending';
+      const typing = document.getElementById('typingIndicator');
+      if (typing) typing.style.display = 'inline-flex';
+
+      try {
+        const sessionId = getOrCreateSessionId();
+        const response = await fetch(`/agent/chat/${encodeURIComponent(sessionId)}`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+
+        bubble.style.display = 'block';
+        bubbleUser.textContent = data.transcript_text || '';
+        bubbleAI.textContent = data.llm_text || '';
+
+        if (response.ok && Array.isArray(data.audio_urls) && data.audio_urls.length > 0) {
+          status.textContent = 'AI response ready!';
+          status.className = 'status-text success glow';
+          const typing = document.getElementById('typingIndicator');
+          if (typing) typing.style.display = 'none';
+
+          await refreshHistory();
+
+          const urls = data.audio_urls;
+          let idx = 0;
+          const playAt = (i) => {
+            replyAudio.src = urls[i];
+            setTimeout(() => replyAudio.play().catch(() => {}), 150);
+          };
+          replyAudio.onended = () => {
+            if (idx + 1 < urls.length) {
+              idx += 1;
+              playAt(idx);
+            } else if (autoStream) {
+              setTimeout(() => toggleRecording(), 400);
+            }
+          };
+          idx = 0;
+          playAt(idx);
+        } else {
+          status.textContent = 'Using fallback response.';
+          status.className = 'status-text warn';
+          speakFallback(data.llm_text || "I'm having trouble connecting right now.");
+        }
+      } catch (error) {
+        status.textContent = 'Using fallback response.';
+        status.className = 'status-text warn';
+        const typing2 = document.getElementById('typingIndicator');
+        if (typing2) typing2.style.display = 'none';
+        speakFallback("I'm having trouble connecting right now.");
+      }
+    }
+
+    function escapeHtml(text) {
+      if (text == null) return '';
+      return text
+        .replace(/\u0026/g, '&amp;')
+        .replace(/\u003c/g, '&lt;')
+        .replace(/\u003e/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    async function refreshHistory() {
+      const sessionId = getOrCreateSessionId();
+      const res = await fetch(`/agent/history/${encodeURIComponent(sessionId)}`);
+      const data = await res.json();
+      const list = document.getElementById('historyList');
+      list.innerHTML = '';
+      const fmt = (ts) => {
+        try { return new Date(ts).toLocaleTimeString(); } catch { return ''; }
+      };
+      (data.history || []).forEach((msg, index) => {
+        const row = document.createElement('div');
+        row.className = `msg ${msg.role === 'user' ? 'user' : 'ai'}`;
+        row.innerHTML = `
+          <div class="avatar">${msg.role === 'user' ? '🧑' : '🤖'}</div>
+          <div class="bubble">
+            <div class="meta">
+              <span class="name">${msg.role === 'user' ? 'You' : 'AI Assistant'}</span>
+              <span class="time">${fmt(msg.ts)}</span>
+              <button class="icon-btn" title="Copy" onclick="copyMsg(${index})"><i class="fas fa-copy"></i></button>
+            </div>
+            <div class="content">${escapeHtml(msg.content || '')}</div>
+          </div>
+        `;
+        list.appendChild(row);
+      });
+      scrollHistoryToBottom();
+      window.__lastHistory = data.history || [];
+    }
+
+    function scrollHistoryToBottom() {
+      const list = document.getElementById('historyList');
+      if (!list) return;
+      try { list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' }); }
+      catch { list.scrollTop = list.scrollHeight; }
+    }
+
+    function scrollHistoryToTop() {
+      const list = document.getElementById('historyList');
+      if (!list) return;
+      try { list.scrollTo({ top: 0, behavior: 'smooth' }); }
+      catch { list.scrollTop = 0; }
+    }
+
+    function copyMsg(index) {
+      try {
+        const msg = (window.__lastHistory || [])[index];
+        if (!msg) return;
+        navigator.clipboard.writeText(msg.content || '');
+      } catch {}
+    }
+
+    function speakFallback(message) {
+      try {
+        const text = message || "I'm having trouble connecting right now.";
+        if (window.speechSynthesis) {
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.lang = 'en-US';
+          utter.rate = 1.0;
+          utter.pitch = 1.0;
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utter);
+        } else {
+          alert(text);
+        }
+      } catch (e) {}
+    }
+
+    function startVU(stream) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 1024;
+        src.connect(analyser);
+        const vu = document.querySelector('.vu');
+        const bars = vu ? vu.querySelectorAll('.bar') : [];
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const update = () => {
+          analyser.getByteTimeDomainData(data);
+          // Compute rough volume from waveform
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length); // 0..1
+          const h = Math.min(1, rms * 3); // amplify a bit
+          bars.forEach((b, idx) => {
+            const factor = 0.7 + idx * 0.15; // slightly different heights
+            b.style.setProperty('--vu', `${Math.max(6, Math.floor(h * 36 * factor))}px`);
+          });
+          vuRAF = requestAnimationFrame(update);
+        };
+        vuRAF = requestAnimationFrame(update);
+      } catch {}
+    }
+
+    function stopVU() {
+      try { vuRAF && cancelAnimationFrame(vuRAF); } catch {}
+      const bars = document.querySelectorAll('.vu .bar');
+      bars.forEach(b => b.style.setProperty('--vu', '8px'));
+      try { audioCtx && audioCtx.close(); } catch {}
+      audioCtx = null; analyser = null; vuRAF = null;
+    }
+
+    async function clearHistory() {
+      const sessionId = getOrCreateSessionId();
+      await fetch(`/agent/history/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+      await refreshHistory();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      getOrCreateSessionId();
+      refreshHistory();
+    });
+  </script>
+</body>
+</html>
+
