@@ -1,8 +1,11 @@
+import asyncio
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -311,6 +314,169 @@ async def get_history(session_id: str):
 async def clear_history(session_id: str):
     CHAT_HISTORY[session_id] = []
     return {"session_id": session_id, "cleared": True}
+
+
+# Simple echo WebSocket endpoint
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    # Accept the WebSocket connection
+    await ws.accept()
+    try:
+        while True:
+            # Receive text from client
+            msg = await ws.receive_text()
+            # Echo back (you can also include timestamp)
+            await ws.send_text(f"echo: {msg}")
+    except WebSocketDisconnect:
+        # Client disconnected gracefully
+        pass
+    except Exception:
+        # Log unexpected errors and close socket
+        logger.exception("WebSocket error")
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
+@app.websocket("/ws/audio")
+async def websocket_audio(ws: WebSocket):
+    """
+    Receives 16 kHz, 16-bit, mono PCM audio frames from the browser and streams
+    them to AssemblyAI's Streaming API. Transcripts are printed to the server
+    console and also sent back to the client over the same WebSocket as text
+    messages for optional UI display.
+    """
+    await ws.accept()
+    print("\n✅ WebSocket audio connection established\n")
+
+    # Import streaming function
+    from services.stt import stream_transcribe
+
+    # Session management
+    session = None
+    ws_open = True
+
+    async def on_transcript_cb(text: str, end_of_turn: bool):
+        """Callback to handle transcripts from AssemblyAI"""
+        if not text:
+            return
+            
+        # Check if WebSocket is still open
+        if not ws_open:
+            logger.warning("WebSocket closed, cannot send transcript")
+            return
+        
+        try:
+            # Send structured message to client with transcript type
+            import json
+            message = {
+                "type": "transcript",
+                "text": text,
+                "is_final": end_of_turn,
+                "end_of_turn": end_of_turn
+            }
+            
+            # Send JSON message to client
+            json_message = json.dumps(message)
+            await ws.send_text(json_message)
+            
+            # Log what we're sending
+            if end_of_turn:
+                logger.info(f"📝 Final transcript sent to client: {text}")
+                logger.info(f"🔚 End of turn notification sent to UI")
+            else:
+                logger.info(f"Interim transcript sent to client: {text[:50]}...")
+        except Exception as e:
+            logger.error(f"Failed to send transcript to client: {e}")
+            import traceback
+            traceback.print_exc()
+
+    try:
+        # Get the current event loop for proper async handling
+        loop = asyncio.get_event_loop()
+        
+        # Create AssemblyAI streaming session with event loop
+        logger.info("Creating AssemblyAI streaming session...")
+        session = await stream_transcribe(
+            on_transcript=on_transcript_cb,
+            loop=loop
+        )
+        
+        if session is None:
+            logger.error("Failed to create streaming session")
+            error_msg = json.dumps({"type": "error", "message": "STT unavailable - check your ASSEMBLYAI_API_KEY"})
+            await ws.send_text(error_msg)
+            await ws.close()
+            return
+        
+        logger.info("✅ Streaming session ready, waiting for audio...")
+        print("\n🎤 Ready to receive audio from browser (16kHz, 16-bit PCM)\n")
+        
+        # Main loop to receive and forward audio
+        while True:
+            try:
+                message = await ws.receive()
+            except WebSocketDisconnect:
+                logger.info("Client disconnected")
+                break
+            except RuntimeError as e:
+                if "disconnect" in str(e).lower():
+                    logger.info("WebSocket disconnected")
+                    break
+                raise
+            except Exception as e:
+                logger.warning(f"Error receiving message: {e}")
+                break
+            
+            # Handle text messages (control commands)
+            if "text" in message:
+                txt = message.get("text", "")
+                if txt.strip().upper() == "EOF":
+                    logger.info("Received EOF signal, closing session")
+                    break
+                # Ignore other text messages
+                continue
+            
+            # Handle binary audio data
+            if "bytes" in message:
+                audio_data = message.get("bytes")
+                if audio_data:
+                    # Forward PCM16 audio to AssemblyAI
+                    try:
+                        await session.send_audio(audio_data)
+                        # Only log occasionally to avoid spam
+                        # logger.debug(f"Forwarding {len(audio_data)} bytes to AssemblyAI")
+                    except Exception as e:
+                        logger.error(f"Failed to send audio to AssemblyAI: {e}")
+                        break
+            else:
+                logger.debug(f"Received message without audio data: {message.keys()}")
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected by client")
+    except (ConnectionClosedError, ConnectionClosedOK):
+        logger.info("WebSocket connection closed")
+    except Exception as e:
+        logger.exception(f"Unexpected error in WebSocket handler: {e}")
+    finally:
+        ws_open = False
+        
+        # Clean up AssemblyAI session
+        if session is not None:
+            try:
+                logger.info("Closing AssemblyAI session...")
+                await session.close()
+            except Exception as e:
+                logger.warning(f"Error closing AssemblyAI session: {e}")
+        
+        # Close WebSocket
+        try:
+            await ws.close()
+        except Exception:
+            pass
+        
+        print("\n❌ WebSocket audio connection closed\n")
 
 
 @app.exception_handler(Exception)

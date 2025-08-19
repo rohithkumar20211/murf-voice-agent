@@ -96,6 +96,8 @@
     let autoStream = false;
     let micStream;
     let isRecording = false;
+    let ws; // WebSocket for streaming audio
+    let usedWS = false; // becomes true once a chunk is sent over WS
 
     // VU meter
     let audioCtx;
@@ -115,23 +117,132 @@
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           // Setup VU
           startVU(micStream);
-          // Recorder
-          mediaRecorder = new MediaRecorder(micStream);
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) recordedChunks.push(event.data);
+
+          // Prepare WebSocket before audio graph so we can stream PCM16
+          ws = new WebSocket(`ws://${window.location.host}/ws/audio`);
+          ws.binaryType = 'arraybuffer';
+
+          // Display transcripts sent back from server with turn detection
+          ws.onmessage = (ev) => {
+            try {
+              console.log('WebSocket message received:', ev.data);
+              
+              // Try to parse as JSON for structured messages
+              let message;
+              try {
+                message = JSON.parse(ev.data);
+              } catch (parseError) {
+                console.warn('Failed to parse as JSON, treating as plain text:', parseError);
+                // Fallback for plain text (backward compatibility)
+                message = { type: 'transcript', text: String(ev.data || ''), is_final: false };
+              }
+              
+              const bubble = document.getElementById('chatBubble');
+              const bubbleUser = document.getElementById('bubbleUser');
+              const status = document.getElementById('uploadStatus');
+              
+              if (message.type === 'transcript') {
+                // Ensure bubble is visible
+                bubble.style.display = 'block';
+                
+                if (message.end_of_turn || message.is_final) {
+                  // Final transcript - show complete text and notify user
+                  console.log('🔚 Final transcript received:', message.text);
+                  bubbleUser.textContent = message.text;
+                  bubbleUser.style.fontWeight = '600';
+                  bubbleUser.style.color = '#1a1a1a';
+                  bubbleUser.style.fontStyle = 'normal';
+                  
+                  // Update status to show turn ended
+                  status.textContent = '✅ Turn complete - transcript finalized';
+                  status.className = 'status-text success';
+                  
+                  // Visual indicator for turn end with animation
+                  bubble.classList.add('turn-complete');
+                  setTimeout(() => bubble.classList.remove('turn-complete'), 1500);
+                  
+                  // Log to console for debugging
+                  console.log('Turn detection successful - UI updated');
+                } else {
+                  // Interim transcript - show in lighter style
+                  console.log('📝 Interim transcript:', message.text);
+                  bubbleUser.textContent = message.text;
+                  bubbleUser.style.fontWeight = '400';
+                  bubbleUser.style.color = '#666';
+                  bubbleUser.style.fontStyle = 'italic';
+                  
+                  // Update status to show listening
+                  status.textContent = '🎤 Listening...';
+                  status.className = 'status-text pending';
+                }
+              } else if (message.type === 'error') {
+                console.error('Error message from server:', message.message);
+                status.textContent = '❌ ' + message.message;
+                status.className = 'status-text error';
+              }
+            } catch (e) {
+              console.error('Error processing WebSocket message:', e);
+              console.error('Raw message data:', ev.data);
+            }
           };
-          mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-            // Cleanup mic/VU
-            try { micStream.getTracks().forEach(t => t.stop()); } catch {}
-            stopVU();
-            btn.classList.remove('recording');
-            btn.setAttribute('aria-pressed', 'false');
-            isRecording = false;
-            label.textContent = 'Start Talking';
-            uploadAudio(blob);
+
+          // Build WebAudio graph with ScriptProcessor to capture PCM frames
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+          const source = audioCtx.createMediaStreamSource(micStream);
+          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+          const TARGET_SR = 16000;
+          function floatTo16BitPCM(float32Array) {
+            const out = new Int16Array(float32Array.length);
+            for (let i = 0; i < float32Array.length; i++) {
+              let s = Math.max(-1, Math.min(1, float32Array[i]));
+              out[i] = (s < 0 ? s * 0x8000 : s * 0x7FFF) | 0;
+            }
+            return out;
+          }
+          function downsample(buffer, inSampleRate, outSampleRate) {
+            if (outSampleRate === inSampleRate) return buffer;
+            const sampleRateRatio = inSampleRate / outSampleRate;
+            const newLength = Math.round(buffer.length / sampleRateRatio);
+            const result = new Float32Array(newLength);
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            while (offsetResult < result.length) {
+              const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+              let accum = 0, count = 0;
+              for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+                accum += buffer[i];
+                count++;
+              }
+              result[offsetResult] = accum / (count || 1);
+              offsetResult++;
+              offsetBuffer = nextOffsetBuffer;
+            }
+            return result;
+          }
+
+          processor.onaudioprocess = (e) => {
+            try {
+              if (!ws || ws.readyState !== WebSocket.OPEN) return;
+              const input = e.inputBuffer.getChannelData(0);
+              const ds = downsample(input, audioCtx.sampleRate, TARGET_SR);
+              const pcm16 = floatTo16BitPCM(ds);
+              ws.send(pcm16.buffer);
+              usedWS = true;
+            } catch {}
           };
-          mediaRecorder.start();
+
+          source.connect(processor);
+          processor.connect(audioCtx.destination);
+
+          ws.onopen = () => {
+            // Ready to stream; nothing else needed as ScriptProcessor drives sends
+          };
+          ws.onerror = () => {
+            // If WS fails, we may fallback to upload on stop
+          };
+
+          // Stop handler will be triggered when user stops
           isRecording = true;
         } catch (error) {
           alert('Microphone access error: ' + error.message);
@@ -142,7 +253,17 @@
         }
       } else {
         // Stop
-        try { mediaRecorder && mediaRecorder.state !== 'inactive' && mediaRecorder.stop(); } catch {}
+        try { if (ws && ws.readyState === WebSocket.OPEN) { ws.send('EOF'); } } catch {}
+        try { if (ws) ws.close(); } catch {}
+        try { micStream && micStream.getTracks().forEach(t => t.stop()); } catch {}
+        stopVU();
+        try { audioCtx && audioCtx.close(); } catch {}
+        isRecording = false;
+        const btn2 = document.getElementById('recordToggle');
+        const label2 = document.getElementById('recordLabel');
+        btn2.classList.remove('recording');
+        btn2.setAttribute('aria-pressed', 'false');
+        label2.textContent = 'Start Talking';
       }
     }
 
