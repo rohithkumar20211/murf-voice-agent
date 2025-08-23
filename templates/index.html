@@ -14,15 +14,15 @@
   <div class="container">
     
     <div class="header">
-      <h1>Talk to your AI assistant</h1>
-      <p>Tap the mic, speak naturally, and hear back an instant Murf voice reply.</p>
+      <h1>Day 22 Murf - AI Task</h1>
+      <p>Tap the mic, speak naturally</p>
     </div>
 
 
     <div class="feature-section">
       <div class="feature-title">
         <i class="fas fa-microphone-alt"></i>
-        <h2>Conversational Agent</h2>
+        <h2></h2>
       </div>
 
       <div class="agent-controls">
@@ -103,6 +103,205 @@
     let audioCtx;
     let analyser;
     let vuRAF;
+  let audioChunksArray = []; // Array to accumulate base64 audio chunks
+  
+  // Audio streaming and playback system
+  class AudioStreamPlayer {
+    constructor() {
+      this.audioContext = null;
+      this.audioQueue = [];
+      this.isPlaying = false;
+      this.nextStartTime = 0;
+      this.totalDuration = 0;
+      this.chunksPlayed = 0;
+      this.chunksReceived = 0;
+      this.sourceNodes = [];
+      this.bufferCache = new Map();
+      this.playbackStarted = false;
+      this.minBufferSize = 1; // Start playback after 1 chunk buffered (for single audio mode)
+      this.singleAudioMode = true; // Flag to indicate single audio mode
+    }
+
+    async init() {
+      if (!this.audioContext) {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        console.log('🎵 Audio context initialized, sample rate:', this.audioContext.sampleRate);
+      }
+      return this.audioContext;
+    }
+
+    async decodeBase64Audio(base64Data) {
+      try {
+        // Remove any data URL prefix if present
+        const base64 = base64Data.replace(/^data:audio\/[a-z]+;base64,/, '');
+        
+        // Convert base64 to binary
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // Decode audio data
+        const audioBuffer = await this.audioContext.decodeAudioData(bytes.buffer);
+        return audioBuffer;
+      } catch (error) {
+        console.error('❌ Error decoding audio:', error);
+        return null;
+      }
+    }
+
+    async addChunk(base64Audio, chunkIndex) {
+      if (!this.audioContext) {
+        await this.init();
+      }
+
+      // Check if we already have this chunk (prevent duplicates)
+      if (this.playbackStarted && this.singleAudioMode) {
+        console.log('⚠️ Ignoring duplicate audio chunk in single audio mode');
+        return;
+      }
+
+      this.chunksReceived++;
+      console.log(`🎵 Processing chunk ${chunkIndex || this.chunksReceived}`);
+      
+      // Decode the audio chunk
+      const audioBuffer = await this.decodeBase64Audio(base64Audio);
+      if (!audioBuffer) {
+        console.error('Failed to decode chunk', chunkIndex);
+        return;
+      }
+
+      // Add to queue
+      this.audioQueue.push({
+        buffer: audioBuffer,
+        index: chunkIndex || this.chunksReceived,
+        duration: audioBuffer.duration
+      });
+
+      console.log(`✅ Chunk ${chunkIndex || this.chunksReceived} added to queue:`);
+      console.log(`   Duration: ${audioBuffer.duration.toFixed(2)}s`);
+      console.log(`   Queue size: ${this.audioQueue.length}`);
+      console.log(`   Total duration buffered: ${this.getTotalBufferedDuration().toFixed(2)}s`);
+
+      // Start playback immediately if we have a chunk and not already playing
+      if (!this.playbackStarted && this.audioQueue.length >= this.minBufferSize) {
+        console.log('🎵 Starting playback with', this.audioQueue.length, 'chunks buffered');
+        this.startPlayback();
+      }
+    }
+
+    getTotalBufferedDuration() {
+      return this.audioQueue.reduce((total, chunk) => total + chunk.duration, 0);
+    }
+
+    startPlayback() {
+      if (this.playbackStarted || this.audioQueue.length === 0) {
+        return;
+      }
+
+      this.playbackStarted = true;
+      this.nextStartTime = this.audioContext.currentTime + 0.1; // Small delay to ensure smooth start
+      this.playNextChunk();
+    }
+
+    playNextChunk() {
+      if (this.audioQueue.length === 0) {
+        console.log('📭 No more chunks in queue');
+        this.isPlaying = false;
+        
+        // Update UI
+        const status = document.getElementById('uploadStatus');
+        if (status) {
+          status.textContent = `🔊 Playback complete (${this.chunksPlayed} chunks played)`;
+          status.className = 'status-text success';
+        }
+        return;
+      }
+
+      const chunk = this.audioQueue.shift();
+      this.isPlaying = true;
+      this.chunksPlayed++;
+
+      // Create source node
+      const source = this.audioContext.createBufferSource();
+      source.buffer = chunk.buffer;
+      source.connect(this.audioContext.destination);
+
+      // Schedule playback
+      const startTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
+      source.start(startTime);
+      
+      console.log(`🔊 Playing chunk ${chunk.index}:`);
+      console.log(`   Start time: ${startTime.toFixed(2)}s`);
+      console.log(`   Duration: ${chunk.duration.toFixed(2)}s`);
+      console.log(`   Queue remaining: ${this.audioQueue.length}`);
+
+      // Update UI
+      const status = document.getElementById('uploadStatus');
+      if (status) {
+        status.textContent = `🔊 Playing audio chunk ${this.chunksPlayed}/${this.chunksReceived} (${this.audioQueue.length} buffered)`;
+        status.className = 'status-text success';
+      }
+
+      // Calculate next start time for seamless playback
+      this.nextStartTime = startTime + chunk.duration;
+      this.totalDuration += chunk.duration;
+
+      // Set up callback for when this chunk finishes
+      source.onended = () => {
+        console.log(`✅ Chunk ${chunk.index} finished`);
+        this.sourceNodes = this.sourceNodes.filter(s => s !== source);
+        
+        // Only play next chunk if we have more in queue
+        if (this.audioQueue.length > 0) {
+          // Play next chunk immediately
+          this.playNextChunk();
+        } else {
+          this.isPlaying = false;
+          this.playbackStarted = false; // Reset for next audio
+          console.log('🎵 Playback complete');
+        }
+      };
+
+      this.sourceNodes.push(source);
+    }
+
+    reset() {
+      // Stop all playing sources
+      this.sourceNodes.forEach(source => {
+        try {
+          source.stop();
+        } catch (e) {}
+      });
+      
+      this.audioQueue = [];
+      this.sourceNodes = [];
+      this.isPlaying = false;
+      this.playbackStarted = false;
+      this.nextStartTime = 0;
+      this.totalDuration = 0;
+      this.chunksPlayed = 0;
+      this.chunksReceived = 0;
+      this.bufferCache.clear();
+      
+      console.log('🔄 Audio player reset');
+    }
+
+    getStats() {
+      return {
+        chunksReceived: this.chunksReceived,
+        chunksPlayed: this.chunksPlayed,
+        queueLength: this.audioQueue.length,
+        isPlaying: this.isPlaying,
+        totalDuration: this.totalDuration.toFixed(2),
+        bufferedDuration: this.getTotalBufferedDuration().toFixed(2)
+      };
+    }
+  }
+
+  // Create global audio player instance
+  let audioPlayer = new AudioStreamPlayer();
 
     async function toggleRecording() {
       const btn = document.getElementById('recordToggle');
@@ -110,6 +309,8 @@
       if (!isRecording) {
         // Start
         recordedChunks = [];
+        audioChunksArray = []; // Reset audio chunks array when starting new recording
+        audioPlayer.reset(); // Reset audio player for clean state
         btn.classList.add('recording');
         btn.setAttribute('aria-pressed', 'true');
         label.textContent = 'Listening... Tap to stop';
@@ -141,7 +342,43 @@
               const bubbleUser = document.getElementById('bubbleUser');
               const status = document.getElementById('uploadStatus');
               
-              if (message.type === 'transcript') {
+              // Handle TTS audio chunks
+              if (message.type === 'tts_audio') {
+                // Process and play audio chunk immediately for streaming
+                if (message.audio_base64) {
+                  audioChunksArray.push(message.audio_base64);
+                  
+                  // Log acknowledgement to console
+                  console.log('✅ Audio chunk received and accumulated:');
+                  console.log(`  - Chunk index: ${message.chunk_index || audioChunksArray.length}`);
+                  console.log(`  - Base64 length: ${message.audio_base64.length} characters`);
+                  console.log(`  - Total chunks accumulated: ${audioChunksArray.length}`);
+                  console.log(`  - Preview: ${message.audio_base64.substring(0, 50)}...`);
+                  
+                  // Add chunk to audio player for seamless playback
+                  audioPlayer.addChunk(message.audio_base64, message.chunk_index || audioChunksArray.length)
+                    .catch(err => console.error('Failed to add audio chunk to player:', err));
+                  
+                  // Update status to show audio is being received and played
+                  const stats = audioPlayer.getStats();
+                  status.textContent = `🔊 Streaming audio... (${stats.chunksReceived} received, ${stats.chunksPlayed} played)`;
+                  status.className = 'status-text success';
+                }
+              } else if (message.type === 'llm_start') {
+                console.log('🤖 LLM processing started:', message.message);
+                status.textContent = message.message;
+                status.className = 'status-text pending';
+              } else if (message.type === 'llm_chunk') {
+                console.log('📝 LLM chunk received:', message.text);
+                // Could accumulate and display LLM text progressively here if needed
+              } else if (message.type === 'llm_complete') {
+                console.log('✅ LLM response complete:', message.full_response);
+                console.log('📊 Total audio chunks accumulated:', audioChunksArray.length);
+                if (audioChunksArray.length > 0) {
+                  console.log('🎵 Audio data ready for playback (not playing as per requirements)');
+                  console.log('📦 Total base64 characters:', audioChunksArray.reduce((sum, chunk) => sum + chunk.length, 0));
+                }
+              } else if (message.type === 'transcript') {
                 // Ensure bubble is visible
                 bubble.style.display = 'block';
                 
@@ -264,6 +501,13 @@
         btn2.classList.remove('recording');
         btn2.setAttribute('aria-pressed', 'false');
         label2.textContent = 'Start Talking';
+        
+        // Log final audio player stats
+        const stats = audioPlayer.getStats();
+        console.log('📊 Final Audio Stats:');
+        console.log(`   Chunks received: ${stats.chunksReceived}`);
+        console.log(`   Chunks played: ${stats.chunksPlayed}`);
+        console.log(`   Total duration: ${stats.totalDuration}s`);
       }
     }
 

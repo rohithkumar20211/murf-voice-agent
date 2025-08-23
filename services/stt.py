@@ -97,18 +97,12 @@ class AssemblyAIStreamingWrapper:
         
         # The SDK passes 'self' as first argument, then the event
         def on_begin(self_arg, event: BeginEvent):
-            print(f"\n🎤 [TRANSCRIPTION SESSION STARTED] ID: {event.id}\n")
+            # Silent - no console output for cleaner logs
             logger.info(f"Session started: {event.id}")
         
         def on_turn(self_arg, event: TurnEvent):
-            # Print transcripts as they arrive
+            # Don't print transcripts here - they'll be handled by the main app
             if event.transcript:
-                if event.end_of_turn:
-                    print(f"\n📝 [FINAL TRANSCRIPT]: {event.transcript}\n")
-                    print(f"🔚 [END OF TURN DETECTED]\n")
-                else:
-                    print(f"[INTERIM]: {event.transcript}", end="\r")
-
                 # Send to callback if available with turn status
                 if wrapper.on_transcript_callback and wrapper.loop:
                     try:
@@ -128,11 +122,11 @@ class AssemblyAIStreamingWrapper:
         
         def on_terminated(self_arg, event: TerminationEvent):
             duration = getattr(event, 'audio_duration_seconds', 0)
-            print(f"\n[SESSION ENDED] Duration: {duration} seconds\n")
+            # Silent - no console output for cleaner logs
             logger.info(f"Session terminated: {duration} seconds processed")
         
         def on_error(self_arg, error: StreamingError):
-            print(f"\n⚠️ [STREAMING ERROR]: {error}\n")
+            # Silent - just log to logger, not console
             logger.warning(f"Streaming error: {error}")
         
         # Register handlers

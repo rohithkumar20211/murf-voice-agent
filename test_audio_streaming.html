@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Streaming Test</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #333;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .status {
+      background: #f0f0f0;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-weight: 500;
+    }
+    .status.connected { background: #d4edda; color: #155724; }
+    .status.error { background: #f8d7da; color: #721c24; }
+    .status.pending { background: #fff3cd; color: #856404; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 5px;
+      transition: all 0.3s;
+    }
+    button:hover {
+      background: #5a67d8;
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    button.recording {
+      background: #e53e3e;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.7); }
+      70% { box-shadow: 0 0 0 20px rgba(229, 62, 62, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0); }
+    }
+    .console {
+      background: #1a1a1a;
+      color: #0f0;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      height: 400px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+    .console-line {
+      margin: 5px 0;
+      word-break: break-all;
+    }
+    .audio-info {
+      background: #e7f3ff;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    .chunk-counter {
+      font-size: 24px;
+      font-weight: bold;
+      color: #667eea;
+      text-align: center;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎤 Audio Streaming Test</h1>
+    
+    <div id="status" class="status">Ready to connect</div>
+    
+    <div style="text-align: center;">
+      <button id="recordBtn" onclick="toggleRecording()">
+        Start Recording
+      </button>
+      <button onclick="clearConsole()">Clear Console</button>
+    </div>
+    
+    <div class="audio-info">
+      <h3>📊 Audio Streaming Info</h3>
+      <p><strong>Status:</strong> <span id="streamStatus">Not streaming</span></p>
+      <p><strong>Transcript:</strong> <span id="transcript">-</span></p>
+      <p><strong>LLM Response:</strong> <span id="llmResponse">-</span></p>
+    </div>
+    
+    <div class="chunk-counter">
+      Audio Chunks Received: <span id="chunkCount">0</span>
+    </div>
+    
+    <div class="console" id="console">
+      <div class="console-line">Console output will appear here...</div>
+    </div>
+  </div>
+
+  <script>
+    let isRecording = false;
+    let ws = null;
+    let micStream = null;
+    let audioContext = null;
+    let audioChunksArray = [];
+    
+    function log(message, type = 'info') {
+      const console = document.getElementById('console');
+      const line = document.createElement('div');
+      line.className = 'console-line';
+      const timestamp = new Date().toLocaleTimeString();
+      
+      let prefix = '📝';
+      if (type === 'success') prefix = '✅';
+      if (type === 'error') prefix = '❌';
+      if (type === 'audio') prefix = '🔊';
+      if (type === 'transcript') prefix = '💬';
+      
+      line.textContent = `[${timestamp}] ${prefix} ${message}`;
+      console.appendChild(line);
+      console.scrollTop = console.scrollHeight;
+    }
+    
+    function updateStatus(message, type = '') {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.className = 'status ' + type;
+    }
+    
+    function clearConsole() {
+      document.getElementById('console').innerHTML = '<div class="console-line">Console cleared</div>';
+      audioChunksArray = [];
+      document.getElementById('chunkCount').textContent = '0';
+    }
+    
+    async function toggleRecording() {
+      const btn = document.getElementById('recordBtn');
+      
+      if (!isRecording) {
+        // Start recording
+        audioChunksArray = [];
+        document.getElementById('chunkCount').textContent = '0';
+        
+        try {
+          // Get microphone access
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          log('Microphone access granted', 'success');
+          
+          // Create WebSocket connection
+          ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/audio`);
+          ws.binaryType = 'arraybuffer';
+          
+          ws.onopen = () => {
+            log('WebSocket connected', 'success');
+            updateStatus('Connected and recording', 'connected');
+          };
+          
+          ws.onmessage = (event) => {
+            try {
+              const message = JSON.parse(event.data);
+              log(`Received message type: ${message.type}`);
+              
+              if (message.type === 'tts_audio') {
+                // Handle audio chunk
+                if (message.audio_base64) {
+                  audioChunksArray.push(message.audio_base64);
+                  const chunkIndex = message.chunk_index || audioChunksArray.length;
+                  
+                  // Log detailed acknowledgement
+                  log(`Audio chunk #${chunkIndex} received`, 'audio');
+                  log(`  Base64 length: ${message.audio_base64.length} characters`, 'audio');
+                  log(`  Preview: ${message.audio_base64.substring(0, 50)}...`, 'audio');
+                  log(`  Total chunks accumulated: ${audioChunksArray.length}`, 'success');
+                  
+                  // Update counter
+                  document.getElementById('chunkCount').textContent = audioChunksArray.length;
+                  
+                  // Calculate total size
+                  const totalSize = audioChunksArray.reduce((sum, chunk) => sum + chunk.length, 0);
+                  log(`  Total base64 size: ${totalSize} characters`, 'audio');
+                }
+              } else if (message.type === 'transcript') {
+                document.getElementById('transcript').textContent = message.text;
+                log(`Transcript: ${message.text}`, 'transcript');
+                if (message.is_final || message.end_of_turn) {
+                  log('End of turn detected', 'success');
+                }
+              } else if (message.type === 'llm_start') {
+                log('LLM processing started', 'info');
+                document.getElementById('streamStatus').textContent = 'Processing with LLM...';
+              } else if (message.type === 'llm_chunk') {
+                log(`LLM chunk: ${message.text.substring(0, 50)}...`, 'info');
+              } else if (message.type === 'llm_complete') {
+                document.getElementById('llmResponse').textContent = message.full_response;
+                log('LLM response complete', 'success');
+                document.getElementById('streamStatus').textContent = 'Streaming audio...';
+                
+                // Final summary
+                if (audioChunksArray.length > 0) {
+                  log('=== AUDIO STREAMING COMPLETE ===', 'success');
+                  log(`Total audio chunks received: ${audioChunksArray.length}`, 'success');
+                  const totalSize = audioChunksArray.reduce((sum, chunk) => sum + chunk.length, 0);
+                  log(`Total base64 data size: ${totalSize} characters`, 'success');
+                  log('Audio data successfully accumulated in array (not playing)', 'success');
+                }
+              }
+            } catch (e) {
+              log(`Error parsing message: ${e.message}`, 'error');
+            }
+          };
+          
+          ws.onerror = (error) => {
+            log(`WebSocket error: ${error}`, 'error');
+            updateStatus('Connection error', 'error');
+          };
+          
+          ws.onclose = () => {
+            log('WebSocket closed', 'info');
+            updateStatus('Disconnected', '');
+          };
+          
+          // Set up audio streaming
+          audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+          const source = audioContext.createMediaStreamSource(micStream);
+          const processor = audioContext.createScriptProcessor(4096, 1, 1);
+          
+          // Downsample to 16kHz
+          function floatTo16BitPCM(float32Array) {
+            const out = new Int16Array(float32Array.length);
+            for (let i = 0; i < float32Array.length; i++) {
+              let s = Math.max(-1, Math.min(1, float32Array[i]));
+              out[i] = (s < 0 ? s * 0x8000 : s * 0x7FFF) | 0;
+            }
+            return out;
+          }
+          
+          function downsample(buffer, inSampleRate, outSampleRate) {
+            if (outSampleRate === inSampleRate) return buffer;
+            const sampleRateRatio = inSampleRate / outSampleRate;
+            const newLength = Math.round(buffer.length / sampleRateRatio);
+            const result = new Float32Array(newLength);
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            while (offsetResult < result.length) {
+              const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+              let accum = 0, count = 0;
+              for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+                accum += buffer[i];
+                count++;
+              }
+              result[offsetResult] = accum / (count || 1);
+              offsetResult++;
+              offsetBuffer = nextOffsetBuffer;
+            }
+            return result;
+          }
+          
+          processor.onaudioprocess = (e) => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              const input = e.inputBuffer.getChannelData(0);
+              const downsampled = downsample(input, audioContext.sampleRate, 16000);
+              const pcm16 = floatTo16BitPCM(downsampled);
+              ws.send(pcm16.buffer);
+            }
+          };
+          
+          source.connect(processor);
+          processor.connect(audioContext.destination);
+          
+          btn.textContent = 'Stop Recording';
+          btn.classList.add('recording');
+          isRecording = true;
+          document.getElementById('streamStatus').textContent = 'Recording and streaming...';
+          
+        } catch (error) {
+          log(`Error starting recording: ${error.message}`, 'error');
+          updateStatus('Failed to start recording', 'error');
+        }
+        
+      } else {
+        // Stop recording
+        log('Stopping recording...', 'info');
+        
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send('EOF');
+          ws.close();
+        }
+        
+        if (micStream) {
+          micStream.getTracks().forEach(track => track.stop());
+        }
+        
+        if (audioContext) {
+          audioContext.close();
+        }
+        
+        btn.textContent = 'Start Recording';
+        btn.classList.remove('recording');
+        isRecording = false;
+        updateStatus('Recording stopped', '');
+        document.getElementById('streamStatus').textContent = 'Not streaming';
+        
+        // Summary
+        if (audioChunksArray.length > 0) {
+          log('=== FINAL SUMMARY ===', 'success');
+          log(`Total audio chunks accumulated: ${audioChunksArray.length}`, 'success');
+          const totalSize = audioChunksArray.reduce((sum, chunk) => sum + chunk.length, 0);
+          log(`Total base64 data size: ${totalSize} characters`, 'success');
+        }
+      }
+    }
+  </script>
+</body>
+</html>

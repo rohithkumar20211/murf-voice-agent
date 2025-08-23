@@ -32,3 +32,34 @@ async def llm_generate(model_name: str, prompt: str) -> Optional[str]:
         logger.warning(f"LLM error: {e}")
         return None
 
+
+async def llm_generate_stream(model_name: str, prompt: str):
+    """Generate LLM response with streaming support.
+    
+    Yields text chunks as they arrive from the LLM API.
+    """
+    if not LLM_AVAILABLE:
+        yield None
+        return
+    
+    try:
+        import google.generativeai as genai
+        
+        llm_model = genai.GenerativeModel(model_name)
+        
+        # Generate content with streaming enabled
+        response = await asyncio.to_thread(
+            llm_model.generate_content,
+            prompt,
+            stream=True
+        )
+        
+        # Yield chunks as they arrive
+        for chunk in response:
+            if hasattr(chunk, 'text') and chunk.text:
+                yield chunk.text
+                
+    except Exception as e:
+        logger.error(f"LLM streaming error: {e}")
+        yield None
+
