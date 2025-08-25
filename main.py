@@ -24,6 +24,7 @@ from services.llm import llm_generate, LLM_AVAILABLE
 from utils.text import chunk_text, build_prompt_from_history
 from config import FALLBACK_TEXT
 from utils.logger import logger
+from personas import get_persona_voice
 
 app = FastAPI()
 
@@ -111,7 +112,7 @@ async def tts_echo(file: UploadFile = File(...)):
             return {"transcript": None, "audio_url": "", "message": FALLBACK_TEXT}
         if not TTS_AVAILABLE:
             return {"transcript": transcribed_text, "audio_url": "", "message": FALLBACK_TEXT}
-        audio_url = tts_generate(text=transcribed_text, voice_id="en-US-natalie")
+        audio_url = tts_generate(text=transcribed_text, voice_id=get_persona_voice())
         if audio_url:
             return {
                 "transcript": transcribed_text,
@@ -130,7 +131,7 @@ async def llm_query(
     file: UploadFile | None = File(None),
     prompt: str | None = Form(None),
     model: str | None = Form(None),
-    voice_id: str | None = Form("en-US-natalie"),
+    voice_id: str | None = Form(None),
 ):
     """Text or audio input -> LLM -> optional TTS"""
     try:
@@ -177,7 +178,7 @@ async def llm_query(
         if TTS_AVAILABLE and llm_text != FALLBACK_TEXT:
             try:
                 for ch in chunk_text(llm_text, limit=3000):
-                    url = tts_generate(text=ch, voice_id=voice_id or "en-US-natalie")
+                    url = tts_generate(text=ch, voice_id=voice_id or get_persona_voice())
                     if url:
                         audio_urls.append(url)
             except Exception:
@@ -210,7 +211,7 @@ async def agent_chat(
     file: UploadFile | None = File(None),
     prompt: str | None = Form(None),
     model: str | None = Form(None),
-    voice_id: str | None = Form("en-US-natalie"),
+    voice_id: str | None = Form(None),
 ):
     try:
         content_type = request.headers.get("content-type", "").lower()
@@ -269,7 +270,7 @@ async def agent_chat(
         if TTS_AVAILABLE and llm_text != FALLBACK_TEXT:
             try:
                 for ch in chunk_text(llm_text, limit=3000):
-                    url = tts_generate(text=ch, voice_id=voice_id or "en-US-natalie")
+                    url = tts_generate(text=ch, voice_id=voice_id or get_persona_voice())
                     if url:
                         audio_urls.append(url)
             except Exception:
@@ -353,14 +354,30 @@ async def websocket_audio(ws: WebSocket):
     # Import streaming function
     from services.stt import stream_transcribe
 
+    # Session management - extract from query params
+    session_id = None
+    try:
+        # Get session ID from query params if available
+        query_params = ws.url.query
+        if query_params:
+            import urllib.parse
+            params = urllib.parse.parse_qs(query_params)
+            if 'session' in params:
+                session_id = params['session'][0]
+                print(f"📝 Using session ID: {session_id}")
+    except Exception as e:
+        logger.warning(f"Could not extract session ID: {e}")
+    
     # Session management
     session = None
     ws_open = True
     last_transcript = ""  # Track last transcript to avoid duplicates
+    processing_llm = False  # Flag to prevent concurrent LLM processing
+    last_transcript_time = 0  # Track timestamp of last processed transcript
 
     async def on_transcript_cb(text: str, end_of_turn: bool):
         """Callback to handle transcripts from AssemblyAI"""
-        nonlocal last_transcript
+        nonlocal last_transcript, processing_llm, last_transcript_time
         
         if not text:
             return
@@ -386,22 +403,38 @@ async def websocket_audio(ws: WebSocket):
             
             # Only process final transcripts and avoid duplicates
             if end_of_turn:
+                import time
+                current_time = time.time()
+                
                 # Check if this is essentially the same as the last transcript (case-insensitive)
                 # Also check if text is too short or similar to avoid processing noise
                 normalized_text = text.lower().strip()
-                if normalized_text and len(normalized_text) > 2 and normalized_text != last_transcript.lower().strip():
-                    last_transcript = text
-                    # Generate and stream LLM response when end of turn is detected
-                    await process_llm_response(text, ws, ws_open)
-                elif normalized_text == last_transcript.lower().strip():
-                    logger.info(f"Skipping duplicate transcript: {text}")
+                
+                # Skip if same text was processed within last 2 seconds (duplicate detection)
+                time_since_last = current_time - last_transcript_time
+                is_duplicate_text = normalized_text == last_transcript.lower().strip()
+                is_too_soon = time_since_last < 2.0  # 2 second debounce
+                
+                if normalized_text and len(normalized_text) > 2:
+                    if is_duplicate_text and is_too_soon:
+                        logger.info(f"Skipping duplicate transcript (within {time_since_last:.1f}s): {text}")
+                    elif not processing_llm:
+                        # New transcript or enough time has passed
+                        processing_llm = True
+                        last_transcript = text
+                        last_transcript_time = current_time
+                        # Generate and stream LLM response when end of turn is detected
+                        await process_llm_response(text, ws, ws_open, session_id)
+                        processing_llm = False
+                    else:
+                        logger.info(f"Already processing LLM, skipping: {text}")
             # Remove interim transcript logging for cleaner output
         except Exception as e:
             logger.error(f"Failed to send transcript to client: {e}")
             import traceback
             traceback.print_exc()
     
-    async def process_llm_response(transcript: str, websocket: WebSocket, socket_open: bool):
+    async def process_llm_response(transcript: str, websocket: WebSocket, socket_open: bool, session_id: str = None):
         """Process the final transcript with LLM and stream the response with Murf TTS"""
         if not LLM_AVAILABLE:
             return
@@ -409,9 +442,23 @@ async def websocket_audio(ws: WebSocket):
         try:
             from services.llm import llm_generate_stream
             from services.murf_ws import MurfWebSocketClient, murf_streaming_tts
+            from datetime import datetime
             
             # Clean console output - just show user query
             print(f"\n👤 USER: {transcript}")
+            
+            # Save user message to chat history if session_id provided
+            if session_id:
+                if session_id not in CHAT_HISTORY:
+                    CHAT_HISTORY[session_id] = []
+                CHAT_HISTORY[session_id].append({
+                    "role": "user",
+                    "content": transcript,
+                    "ts": datetime.now().isoformat()
+                })
+                # Trim history if too long
+                if len(CHAT_HISTORY[session_id]) > MAX_HISTORY_MESSAGES:
+                    CHAT_HISTORY[session_id] = CHAT_HISTORY[session_id][-MAX_HISTORY_MESSAGES:]
             
             # Send LLM start message to client
             if socket_open:
@@ -424,21 +471,14 @@ async def websocket_audio(ws: WebSocket):
             # Accumulate the full response for console logging
             accumulated_response = ""
             model_name = "gemini-1.5-flash-8b"  # Default model
-            voice_id = "en-US-natalie"  # Default voice
+            voice_id = get_persona_voice()  # Use persona's voice
             
             # Initialize Murf WebSocket client
             murf_client = None
-            use_murf_ws = False  
+            use_murf_ws = False  # Disabled as Murf doesn't provide WebSocket API
             
-            try:
-                
-                if TTS_AVAILABLE and use_murf_ws:
-                    murf_client = MurfWebSocketClient()
-                    await murf_client.connect(voice_id=voice_id)
-                    logger.info("Connected to Murf WebSocket for streaming TTS")
-            except Exception as e:
-                logger.warning(f"Could not connect to Murf WebSocket: {e}")
-                murf_client = None
+            # Skip WebSocket connection attempt since Murf doesn't support it
+            # We'll use HTTP fallback instead
             
             
             text_chunks_for_tts = []
@@ -472,6 +512,17 @@ async def websocket_audio(ws: WebSocket):
             
             # Print only the final response in a clean format
             print(f"\n🤖 ASSISTANT: {accumulated_response}")
+            
+            # Save assistant response to chat history if session_id provided
+            if session_id and accumulated_response:
+                CHAT_HISTORY[session_id].append({
+                    "role": "assistant",
+                    "content": accumulated_response,
+                    "ts": datetime.now().isoformat()
+                })
+                # Trim history if too long
+                if len(CHAT_HISTORY[session_id]) > MAX_HISTORY_MESSAGES:
+                    CHAT_HISTORY[session_id] = CHAT_HISTORY[session_id][-MAX_HISTORY_MESSAGES:]
             
             # Handle TTS audio generation and reception
             if murf_client and murf_client.is_connected:

@@ -1,5 +1,6 @@
 import re
 from typing import Any, Dict, List
+from personas import get_persona_system_prompt, is_greeting, get_persona_greeting
 
 
 def chunk_text(text: str, limit: int = 3000) -> List[str]:
@@ -31,8 +32,23 @@ def chunk_text(text: str, limit: int = 3000) -> List[str]:
 
 def build_prompt_from_history(history: List[Dict[str, Any]]) -> str:
     lines: List[str] = []
-    system_preamble = "You are a helpful, concise voice assistant. Keep responses clear and short."
+    
+    # Use the ArcNova persona system prompt
+    system_preamble = get_persona_system_prompt()
     lines.append(f"System: {system_preamble}")
+    
+    # Check if this is the first message and it's a greeting
+    if len(history) == 1:
+        first_msg = history[0]
+        if first_msg.get("role") == "user":
+            user_content = str(first_msg.get("content", "")).strip()
+            if is_greeting(user_content):
+                # Return the persona greeting for greetings
+                lines.append(f"User: {user_content}")
+                lines.append(f"Assistant: {get_persona_greeting()}")
+                return "\n".join(lines)
+    
+    # Build normal conversation history
     for msg in history:
         role = msg.get("role", "user")
         content = str(msg.get("content", "")).strip()

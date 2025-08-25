@@ -2,18 +2,49 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
 
 # Virtual env
 .venv/
+venv/
+ENV/
+env/
 
 # Env vars
 .env
+.env.local
+.env.*.local
 
 # OS cruft
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Testing (cleanup)
+test_*.py
+*_test.py
+.pytest_cache/
+
+# Uploads & Temp
+uploads/*
+!uploads/.gitkeep
+temp/
+*.tmp
+
+# Development files
+check_*.py
+demo_*.py
+*.html
+!templates/*.html
 

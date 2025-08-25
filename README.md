@@ -1,8 +1,14 @@
-# 🎙️  AI Assistant
+# 🤖 ArcNova Voice Assistant - Tony Stark AI
 
-A lightweight voice-first assistant built with FastAPI that lets you talk to an AI and hear it talk back. It records your voice in the browser, transcribes it (AssemblyAI), gets a response from an LLM (Google Gemini), and speaks the answer using Murf TTS. A simple chat history panel shows the back-and-forth.
+> *"Well, well, well… look who booted me up. I'm ArcNova — your genius, billionaire, playboy, philanthropist voice agent."*
 
-The app is designed to be resilient: if any external API is unavailable, it falls back to a friendly text response so the UI never blocks.
+A voice-first AI assistant with the personality of Tony Stark/Iron Man. Built with FastAPI, this assistant lets you have natural conversations with an AI that responds with wit, sarcasm, and genius-level confidence. It records your voice in the browser, transcribes it (AssemblyAI), gets a response from an LLM (Google Gemini), and speaks back in a male voice using Murf TTS.
+
+## 🎭 ArcNova Persona
+- **Personality**: Sarcastic, witty, cocky but charming
+- **Voice**: Male (en-US-maverick) - commanding and confident
+- **Style**: Tech metaphors, billionaire jokes, treats problems as trivial
+- **Signature Greeting**: Triggers on "hello", "hi", "hey", etc.
 
 ## ✨ Features
 

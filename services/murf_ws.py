@@ -9,7 +9,9 @@ import websockets
 from utils.logger import logger
 from config import MURF_API_KEY
 
-MURF_WS_URL = "wss://api.murf.ai/v1/tts/stream"  # This is a hypothetical URL - adjust as needed
+# Note: Murf doesn't currently provide a WebSocket API for streaming
+# This is a placeholder URL - we'll use HTTP fallback instead
+MURF_WS_URL = None  # WebSocket not available, using HTTP fallback
 
 
 class MurfWebSocketClient:

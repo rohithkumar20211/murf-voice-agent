@@ -2,6 +2,7 @@ from typing import List, Optional
 
 from utils.logger import logger
 from config import MURF_API_KEY
+from personas import get_persona_voice
 
 TTS_AVAILABLE = False
 _client = None
@@ -28,10 +29,13 @@ def _extract_audio_url(result) -> Optional[str]:
     return None
 
 
-def tts_generate(text: str, voice_id: str = "en-US-natalie", fmt: str = "mp3") -> Optional[str]:
+def tts_generate(text: str, voice_id: str = None, fmt: str = "mp3") -> Optional[str]:
     if not TTS_AVAILABLE or _client is None:
         return None
     try:
+        # Use persona voice if no voice_id specified
+        if voice_id is None:
+            voice_id = get_persona_voice()
         res = _client.text_to_speech.generate(text=text, voice_id=voice_id, format=fmt)
         return _extract_audio_url(res)
     except Exception as e:

@@ -14,7 +14,7 @@
   <div class="container">
     
     <div class="header">
-      <h1>Day 22 Murf - AI Task</h1>
+      <h1>Arc Nova</h1>
       <p>Tap the mic, speak naturally</p>
     </div>
 
@@ -320,7 +320,8 @@
           startVU(micStream);
 
           // Prepare WebSocket before audio graph so we can stream PCM16
-          ws = new WebSocket(`ws://${window.location.host}/ws/audio`);
+          const sessionId = getOrCreateSessionId();
+          ws = new WebSocket(`ws://${window.location.host}/ws/audio?session=${sessionId}`);
           ws.binaryType = 'arraybuffer';
 
           // Display transcripts sent back from server with turn detection
@@ -374,6 +375,16 @@
               } else if (message.type === 'llm_complete') {
                 console.log('✅ LLM response complete:', message.full_response);
                 console.log('📊 Total audio chunks accumulated:', audioChunksArray.length);
+                
+                // Update the chat bubble with AI response
+                const bubbleAI = document.getElementById('bubbleAI');
+                if (bubbleAI && message.full_response) {
+                  bubbleAI.textContent = message.full_response;
+                }
+                
+                // Refresh chat history to show the new messages
+                refreshHistory().catch(err => console.error('Failed to refresh history:', err));
+                
                 if (audioChunksArray.length > 0) {
                   console.log('🎵 Audio data ready for playback (not playing as per requirements)');
                   console.log('📦 Total base64 characters:', audioChunksArray.reduce((sum, chunk) => sum + chunk.length, 0));
