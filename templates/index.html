@@ -3,82 +3,184 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Murf AI Voice Suite</title>
+  <title>Arc Nova | AI Assistant</title>
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
 </head>
 <body>
-  <div class="container">
+  <!-- Arc Reactor Background Animation -->
+  <div class="arc-reactor-bg">
+    <div class="reactor-core">
+      <div class="core-inner"></div>
+      <div class="energy-ring ring-1"></div>
+      <div class="energy-ring ring-2"></div>
+      <div class="energy-ring ring-3"></div>
+    </div>
+    <div class="particle-field" id="particleField"></div>
+  </div>
+
+  <!-- Main Interface Container -->
+  <div class="nova-container">
     
-    <div class="header">
-      <h1>Arc Nova</h1>
-      <p>Tap the mic, speak naturally</p>
+    <!-- Header with Arc Nova Branding -->
+    <div class="nova-header">
+      <div class="arc-logo">
+        <div class="arc-circle">
+          <div class="arc-core-mini"></div>
+        </div>
+      </div>
+      <h1 class="nova-title">ARC NOVA</h1>
+      <p class="nova-subtitle">Advanced Response Control | Neural Operations Virtual Assistant</p>
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="status-dot online"></span>
+          <span class="status-text">SYSTEM ONLINE</span>
+        </div>
+        <div class="status-item">
+          <span class="status-text" id="sessionId">SESSION: INITIALIZING...</span>
+        </div>
+      </div>
     </div>
 
 
-    <div class="feature-section">
-      <div class="feature-title">
-        <i class="fas fa-microphone-alt"></i>
-        <h2></h2>
+    <!-- Main Control Panel -->
+    <div class="control-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-wave-square"></i>
+          <span>VOICE INTERFACE</span>
+        </div>
+        <div class="panel-status" id="panelStatus">
+          <span class="pulse-dot"></span>
+          READY
+        </div>
       </div>
 
-      <div class="agent-controls">
-        <button id="recordToggle" class="record-btn" type="button" onclick="toggleRecording()" aria-pressed="false" aria-label="Record or stop">
-          <span class="record-icon"><i class="fas fa-microphone"></i></span>
-          <span id="recordLabel">Start Talking</span>
-          <span class="vu" aria-hidden="true">
-            <span class="bar b1"></span>
-            <span class="bar b2"></span>
-            <span class="bar b3"></span>
-          </span>
-        </button>
-        <select id="replyVoice" class="voice-select" aria-label="Select reply voice">
-          <option value="en-US-natalie" selected>Natalie · US</option>
-          <option value="en-IN-ashwin">Ashwin · IN</option>
-          <option value="en-GB-harry">Harry · UK</option>
-        </select>
-        <button id="autoToggle" class="btn btn-accent" onclick="toggleAutoStream()">
-          <i class="fas fa-bolt"></i> Enable Auto-Stream
-        </button>
+      <!-- Arc Reactor Style Mic Button -->
+      <div class="arc-control-center">
+        <div class="arc-button-container">
+          <button id="recordToggle" class="arc-record-btn" type="button" onclick="toggleRecording()" aria-pressed="false" aria-label="Record or stop">
+            <div class="arc-outer-ring">
+              <div class="arc-inner-ring">
+                <div class="arc-core-button">
+                  <i class="fas fa-microphone"></i>
+                </div>
+              </div>
+            </div>
+            <div class="arc-energy-pulse"></div>
+          </button>
+          <div class="arc-label" id="recordLabel">INITIALIZE VOICE COMMAND</div>
+        </div>
+
+        <!-- Voice Visualizer -->
+        <div class="voice-visualizer" id="voiceVisualizer">
+          <canvas id="waveform" width="400" height="100"></canvas>
+        </div>
       </div>
 
-      <div id="uploadStatus" class="status-text"></div
-      <div id="typingIndicator" class="typing" style="display:none" aria-live="polite" aria-label="AI is speaking">
-        <span></span><span></span><span></span>
-      </div
+      <!-- Control Options -->
+      <div class="control-options">
+        <div class="option-group">
+          <label class="option-label">VOICE PROFILE</label>
+          <select id="replyVoice" class="nova-select" aria-label="Select reply voice">
+            <option value="en-US-natalie" selected>Natalie (US)</option>
+            <option value="en-IN-ashwin">Ashwin (IN)</option>
+            <option value="en-GB-harry">Harry (UK)</option>
+          </select>
+        </div>
+        <div class="option-group">
+          <label class="option-label">AUTO-STREAM MODE</label>
+          <button id="autoToggle" class="nova-toggle" onclick="toggleAutoStream()">
+            <div class="toggle-track">
+              <div class="toggle-thumb"></div>
+            </div>
+            <span class="toggle-label">DISABLED</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Status Display -->
+      <div class="status-display">
+        <div id="uploadStatus" class="nova-status"></div>
+        <div id="typingIndicator" class="ai-processing" style="display:none" aria-live="polite" aria-label="AI is processing">
+          <div class="processing-bar">
+            <div class="processing-fill"></div>
+          </div>
+          <span class="processing-text">PROCESSING NEURAL NETWORK...</span>
+        </div>
+      </div>
 
       <!-- Hidden audio element for AI replies (autoplays) -->
       <audio id="replyAudio" preload="auto" style="display:none;"></audio>
     </div>
 
-  <div id="chatBubble" class="chat-bubble" style="display:none; margin-top: 1em;">
-    <div class="user-msg"><strong>🧑 You:</strong> <span id="bubbleUser"></span></div>
-    <div class="ai-msg"><strong>🤖 AI:</strong> <span id="bubbleAI"></span></div>
-  </div>
-
-  <div id="chatHistoryCard" class="chat-history-card" style="margin-top: 1.5em;">
-    <div class="history-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-      <span>⚡ Real-Time Chat History:</span>
-      <div style="display:flex; gap:8px;">
-        <button id="clearHistoryBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="clearHistory()">
-          <i class="fas fa-broom"></i> Clear
-        </button>
-        <button id="scrollTopBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="scrollHistoryToTop()">
-          <i class="fas fa-arrow-up"></i> Top
-        </button>
-        <button id="scrollBottomBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="scrollHistoryToBottom()">
-          <i class="fas fa-arrow-down"></i> Bottom
-        </button>
+    <!-- Holographic Chat Display -->
+    <div id="chatBubble" class="holo-display" style="display:none;">
+      <div class="holo-frame">
+        <div class="holo-content">
+          <div class="message-container">
+            <div class="message user-message">
+              <div class="message-header">
+                <i class="fas fa-user"></i>
+                <span>USER INPUT</span>
+              </div>
+              <div class="message-body" id="bubbleUser"></div>
+            </div>
+            <div class="message ai-message">
+              <div class="message-header">
+                <i class="fas fa-robot"></i>
+                <span>NOVA RESPONSE</span>
+              </div>
+              <div class="message-body" id="bubbleAI"></div>
+            </div>
+          </div>
+        </div>
+        <div class="holo-scanline"></div>
       </div>
     </div>
-    <div id="historyList" class="chat-history-list"></div>
+
+    <!-- History Terminal -->
+    <div id="chatHistoryCard" class="terminal-window">
+      <div class="terminal-header">
+        <div class="terminal-title">
+          <i class="fas fa-terminal"></i>
+          <span>CONVERSATION LOG</span>
+        </div>
+        <div class="terminal-controls">
+          <button class="terminal-btn" onclick="clearHistory()" title="Clear History">
+            <i class="fas fa-trash"></i>
+          </button>
+          <button class="terminal-btn" onclick="scrollHistoryToTop()" title="Scroll to Top">
+            <i class="fas fa-chevron-up"></i>
+          </button>
+          <button class="terminal-btn" onclick="scrollHistoryToBottom()" title="Scroll to Bottom">
+            <i class="fas fa-chevron-down"></i>
+          </button>
+        </div>
+      </div>
+      <div id="historyList" class="terminal-body"></div>
+    </div>
   </div>
 
 
   <script>
+    // Initialize particle effects
+    function initParticles() {
+      const particleField = document.getElementById('particleField');
+      for (let i = 0; i < 50; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.top = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 10 + 's';
+        particle.style.animationDuration = (10 + Math.random() * 20) + 's';
+        particleField.appendChild(particle);
+      }
+    }
+
     // Persist and read chat session id via URL query param (?session=...)
     function getOrCreateSessionId() {
       const url = new URL(window.location.href);
@@ -87,6 +189,11 @@
         session = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
         url.searchParams.set('session', session);
         window.history.replaceState({}, '', url.toString());
+      }
+      // Update session display
+      const sessionDisplay = document.getElementById('sessionId');
+      if (sessionDisplay) {
+        sessionDisplay.textContent = `SESSION: ${session.substring(0, 8).toUpperCase()}`;
       }
       return session;
     }
@@ -306,14 +413,18 @@
     async function toggleRecording() {
       const btn = document.getElementById('recordToggle');
       const label = document.getElementById('recordLabel');
+      const panelStatus = document.getElementById('panelStatus');
       if (!isRecording) {
         // Start
         recordedChunks = [];
         audioChunksArray = []; // Reset audio chunks array when starting new recording
         audioPlayer.reset(); // Reset audio player for clean state
-        btn.classList.add('recording');
+        btn.classList.add('active');
         btn.setAttribute('aria-pressed', 'true');
-        label.textContent = 'Listening... Tap to stop';
+        label.textContent = 'LISTENING... CLICK TO TERMINATE';
+        if (panelStatus) {
+          panelStatus.innerHTML = '<span class="pulse-dot recording"></span> RECORDING';
+        }
         try {
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           // Setup VU
@@ -494,10 +605,13 @@
           isRecording = true;
         } catch (error) {
           alert('Microphone access error: ' + error.message);
-          btn.classList.remove('recording');
+          btn.classList.remove('active');
           btn.setAttribute('aria-pressed', 'false');
           isRecording = false;
-          label.textContent = 'Start Talking';
+          label.textContent = 'INITIALIZE VOICE COMMAND';
+          if (panelStatus) {
+            panelStatus.innerHTML = '<span class="pulse-dot error"></span> ERROR';
+          }
         }
       } else {
         // Stop
@@ -509,9 +623,13 @@
         isRecording = false;
         const btn2 = document.getElementById('recordToggle');
         const label2 = document.getElementById('recordLabel');
-        btn2.classList.remove('recording');
+        const panelStatus2 = document.getElementById('panelStatus');
+        btn2.classList.remove('active');
         btn2.setAttribute('aria-pressed', 'false');
-        label2.textContent = 'Start Talking';
+        label2.textContent = 'INITIALIZE VOICE COMMAND';
+        if (panelStatus2) {
+          panelStatus2.innerHTML = '<span class="pulse-dot online"></span> READY';
+        }
         
         // Log final audio player stats
         const stats = audioPlayer.getStats();
@@ -525,7 +643,15 @@
     function toggleAutoStream() {
       autoStream = !autoStream;
       const btn = document.getElementById('autoToggle');
-      btn.innerHTML = autoStream ? '<i class="fas fa-bolt"></i> Disable Auto-Stream' : '<i class="fas fa-bolt"></i> Enable Auto-Stream';
+      const label = btn.querySelector('.toggle-label');
+      const thumb = btn.querySelector('.toggle-thumb');
+      if (autoStream) {
+        btn.classList.add('active');
+        label.textContent = 'ENABLED';
+      } else {
+        btn.classList.remove('active');
+        label.textContent = 'DISABLED';
+      }
     }
 
     async function uploadAudio(blob) {
@@ -543,7 +669,7 @@
       status.textContent = 'Processing with AI...';
       status.className = 'status-text pending';
       const typing = document.getElementById('typingIndicator');
-      if (typing) typing.style.display = 'inline-flex';
+      if (typing) typing.style.display = 'flex';
 
       try {
         const sessionId = getOrCreateSessionId();
@@ -616,17 +742,15 @@
       };
       (data.history || []).forEach((msg, index) => {
         const row = document.createElement('div');
-        row.className = `msg ${msg.role === 'user' ? 'user' : 'ai'}`;
+        row.className = `terminal-entry ${msg.role === 'user' ? 'user-entry' : 'ai-entry'}`;
         row.innerHTML = `
-          <div class="avatar">${msg.role === 'user' ? '🧑' : '🤖'}</div>
-          <div class="bubble">
-            <div class="meta">
-              <span class="name">${msg.role === 'user' ? 'You' : 'AI Assistant'}</span>
-              <span class="time">${fmt(msg.ts)}</span>
-              <button class="icon-btn" title="Copy" onclick="copyMsg(${index})"><i class="fas fa-copy"></i></button>
-            </div>
-            <div class="content">${escapeHtml(msg.content || '')}</div>
+          <div class="entry-header">
+            <span class="entry-icon">${msg.role === 'user' ? '<i class="fas fa-user"></i>' : '<i class="fas fa-robot"></i>'}</span>
+            <span class="entry-role">${msg.role === 'user' ? 'USER' : 'NOVA'}</span>
+            <span class="entry-time">${fmt(msg.ts)}</span>
+            <button class="entry-action" title="Copy" onclick="copyMsg(${index})"><i class="fas fa-copy"></i></button>
           </div>
+          <div class="entry-content">${escapeHtml(msg.content || '')}</div>
         `;
         list.appendChild(row);
       });
@@ -717,8 +841,17 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      initParticles();
       getOrCreateSessionId();
       refreshHistory();
+      
+      // Initialize waveform canvas
+      const canvas = document.getElementById('waveform');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 2;
+      }
     });
   </script>
 </body>

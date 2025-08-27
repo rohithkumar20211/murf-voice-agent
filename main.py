@@ -317,6 +317,99 @@ async def clear_history(session_id: str):
     return {"session_id": session_id, "cleared": True}
 
 
+# News endpoints
+@app.get("/news/headlines")
+async def get_news_headlines(category: Optional[str] = None, country: Optional[str] = None):
+    """Get latest news headlines"""
+    try:
+        from services.news import get_top_headlines, format_headlines_detailed
+        
+        result = await get_top_headlines(category=category, country=country, limit=5)
+        
+        if result.get("success"):
+            articles = result.get("articles", [])
+            detailed_text = format_headlines_detailed(articles)
+            return {
+                "success": True,
+                "formatted_text": detailed_text,
+                "articles": articles,
+                "total": result.get("total_results", 0)
+            }
+        else:
+            return result
+            
+    except Exception as e:
+        logger.exception("News headlines error")
+        return {"success": False, "message": str(e), "articles": []}
+
+
+@app.post("/news/search")
+async def search_news(request: Request):
+    """Search for news articles"""
+    try:
+        body = await request.json()
+        query = body.get("query", "")
+        
+        if not query:
+            return {"success": False, "message": "Query is required", "articles": []}
+        
+        from services.news import search_news as search_news_func
+        
+        result = await search_news_func(query=query, limit=5)
+        return result
+        
+    except Exception as e:
+        logger.exception("News search error")
+        return {"success": False, "message": str(e), "articles": []}
+
+
+@app.post("/news/command")
+async def news_command(request: Request):
+    """Process a natural language news command"""
+    try:
+        body = await request.json()
+        command_text = body.get("command", "")
+        
+        from skills.news_skill import extract_news_command, handle_news_command, format_news_response
+        
+        command_type, params = extract_news_command(command_text)
+        if command_type:
+            result = await handle_news_command(command_type, params)
+            return {
+                "success": result.get("success", False),
+                "message": format_news_response(result),
+                "articles": result.get("articles", []),
+                "raw_response": result
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Not recognized as a news command. Try 'What's the latest news?' or 'Technology headlines'",
+                "articles": []
+            }
+            
+    except Exception as e:
+        logger.exception("News command error")
+        return {"success": False, "message": str(e), "articles": []}
+
+
+@app.get("/news/status")
+async def news_status():
+    """Check news service status"""
+    try:
+        from services.news import NEWS_AVAILABLE, NEWS_CATEGORIES
+        
+        return {
+            "available": NEWS_AVAILABLE,
+            "categories": NEWS_CATEGORIES,
+            "message": "News service is ready" if NEWS_AVAILABLE else "News service not configured. Add NEWS_API_KEY to .env"
+        }
+        
+    except Exception as e:
+        logger.exception("News status error")
+        return {"available": False, "error": str(e)}
+
+
 # Simple echo WebSocket endpoint
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
