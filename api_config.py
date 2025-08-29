@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from utils.logger import logger
 
 # Load environment variables
-# load_dotenv()
+load_dotenv()
 
 # Configuration file path
 CONFIG_FILE = Path("user_config.json")
@@ -31,7 +31,7 @@ class APIConfigManager:
     def __init__(self):
         self._env_keys = {}
         self._user_keys = {}
-        # self._load_env_keys()
+        self._load_env_keys()
         self._load_user_config()
     
     def _load_env_keys(self):
