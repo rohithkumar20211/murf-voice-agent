@@ -1,23 +1,44 @@
 from typing import Optional, Tuple, Callable, Awaitable
 import asyncio
 from utils.logger import logger
-from config import ASSEMBLYAI_API_KEY
 
 STT_AVAILABLE = False
 _transcriber = None
+_api_key = None
 
-# ---------- Non-streaming (file upload style) ----------
-try:
-    if ASSEMBLYAI_API_KEY:
-        import assemblyai as aai
-        aai.settings.api_key = ASSEMBLYAI_API_KEY
-        _transcriber = aai.Transcriber()
-        STT_AVAILABLE = True
+def initialize_stt():
+    """Initialize or reinitialize STT with current API key"""
+    global STT_AVAILABLE, _transcriber, _api_key
+    
+    # Import here to avoid circular dependency
+    from api_config import get_api_key
+    
+    _api_key = get_api_key("ASSEMBLYAI_API_KEY")
+    
+    if _api_key:
+        try:
+            import assemblyai as aai
+            aai.settings.api_key = _api_key
+            _transcriber = aai.Transcriber()
+            STT_AVAILABLE = True
+            logger.info("AssemblyAI STT initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize AssemblyAI transcriber: {e}")
+            STT_AVAILABLE = False
+            _transcriber = None
     else:
-        logger.warning("ASSEMBLYAI_API_KEY not set; STT disabled")
-except Exception as e:
-    logger.warning(f"Failed to initialize AssemblyAI transcriber: {e}")
-    STT_AVAILABLE = False
+        logger.warning("ASSEMBLYAI_API_KEY not configured; STT disabled")
+        STT_AVAILABLE = False
+        _transcriber = None
+    
+    return STT_AVAILABLE
+
+def reinitialize_stt():
+    """Reinitialize STT with potentially new API key"""
+    return initialize_stt()
+
+# Initialize on module load
+initialize_stt()
 
 
 def stt_transcribe_bytes(audio_bytes: bytes) -> Tuple[Optional[str], str]:
@@ -64,10 +85,16 @@ class AssemblyAIStreamingWrapper:
         self.is_connected = False
         self.loop = loop or asyncio.get_event_loop()
         
+        # Get the current API key
+        from api_config import get_api_key
+        api_key = get_api_key("ASSEMBLYAI_API_KEY")
+        
+        if not api_key:
+            raise ValueError("ASSEMBLYAI_API_KEY not configured")
         
         self.client = StreamingClient(
             StreamingClientOptions(
-                api_key=ASSEMBLYAI_API_KEY,
+                api_key=api_key,
                 api_host="streaming.assemblyai.com"
             )
         )

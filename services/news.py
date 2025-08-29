@@ -8,10 +8,35 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import httpx
 from utils.logger import logger
-from config import NEWS_API_KEY, NEWS_COUNTRY, NEWS_LANGUAGE
+from config import NEWS_COUNTRY, NEWS_LANGUAGE
 
-# Check if News service is available
-NEWS_AVAILABLE = bool(NEWS_API_KEY)
+# News availability will be checked dynamically
+NEWS_AVAILABLE = False
+_api_key = None
+
+def initialize_news():
+    """Initialize or reinitialize News service with current API key"""
+    global NEWS_AVAILABLE, _api_key
+    
+    # Import here to avoid circular dependency
+    from api_config import get_api_key
+    
+    _api_key = get_api_key("NEWS_API_KEY")
+    NEWS_AVAILABLE = bool(_api_key)
+    
+    if NEWS_AVAILABLE:
+        logger.info("News service initialized with NewsAPI")
+    else:
+        logger.warning("News service not available - NEWS_API_KEY not configured")
+    
+    return NEWS_AVAILABLE
+
+def reinitialize_news():
+    """Reinitialize News service with potentially new API key"""
+    return initialize_news()
+
+# Initialize on module load
+initialize_news()
 
 # NewsAPI endpoints
 NEWS_API_BASE_URL = "https://newsapi.org/v2"
@@ -26,7 +51,7 @@ NEWS_CATEGORIES = [
 
 def check_news_availability() -> bool:
     """Check if News service is properly configured"""
-    if not NEWS_API_KEY:
+    if not _api_key:
         logger.warning("News API key not configured. News features disabled.")
         return False
     return True
@@ -58,7 +83,7 @@ async def get_top_headlines(
     
     try:
         params = {
-            "apiKey": NEWS_API_KEY,
+            "apiKey": _api_key,
             "pageSize": limit,
             "country": country or NEWS_COUNTRY
         }
@@ -154,7 +179,7 @@ async def search_news(
     
     try:
         params = {
-            "apiKey": NEWS_API_KEY,
+            "apiKey": _api_key,
             "q": query,
             "sortBy": sort_by,
             "pageSize": limit,
@@ -286,8 +311,4 @@ def format_headlines_detailed(articles: List[Dict[str, Any]]) -> str:
     
     return formatted_text.strip()
 
-# Initialize news service
-if NEWS_AVAILABLE:
-    logger.info("News service initialized with NewsAPI")
-else:
-    logger.warning("News service not available - NEWS_API_KEY not set")
+# Module initialization complete

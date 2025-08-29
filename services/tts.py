@@ -1,23 +1,43 @@
 from typing import List, Optional
 
 from utils.logger import logger
-from config import MURF_API_KEY
 from personas import get_persona_voice
 
 TTS_AVAILABLE = False
 _client = None
 
-try:
-    if MURF_API_KEY:
-        import murf  # local import to avoid hard dependency if missing
-
-        _client = murf.Murf(api_key=MURF_API_KEY)
-        TTS_AVAILABLE = True
+def initialize_tts():
+    """Initialize or reinitialize TTS with current API key"""
+    global TTS_AVAILABLE, _client
+    
+    # Import here to avoid circular dependency
+    from api_config import get_api_key
+    
+    api_key = get_api_key("MURF_API_KEY")
+    
+    if api_key:
+        try:
+            import murf  # local import to avoid hard dependency if missing
+            _client = murf.Murf(api_key=api_key)
+            TTS_AVAILABLE = True
+            logger.info("Murf TTS initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Murf client: {e}")
+            TTS_AVAILABLE = False
+            _client = None
     else:
-        logger.warning("MURF_API_KEY not set; TTS disabled")
-except Exception as e:
-    logger.warning(f"Failed to initialize Murf client: {e}")
-    TTS_AVAILABLE = False
+        logger.warning("MURF_API_KEY not configured; TTS disabled")
+        TTS_AVAILABLE = False
+        _client = None
+    
+    return TTS_AVAILABLE
+
+def reinitialize_tts():
+    """Reinitialize TTS with potentially new API key"""
+    return initialize_tts()
+
+# Initialize on module load
+initialize_tts()
 
 
 def _extract_audio_url(result) -> Optional[str]:

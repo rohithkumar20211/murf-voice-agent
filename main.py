@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Body
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +25,7 @@ from utils.text import chunk_text, build_prompt_from_history
 from config import FALLBACK_TEXT
 from utils.logger import logger
 from personas import get_persona_voice
+from api_config import api_config, get_api_key, save_api_keys, get_config_status
 
 app = FastAPI()
 
@@ -38,18 +39,38 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 CHAT_HISTORY: Dict[str, List[Dict[str, Any]]] = {}
 MAX_HISTORY_MESSAGES = 50
 
+USER_API_KEYS = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def get_home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.post("/api/config")
+async def save_api_keys(payload: dict = Body(...)):
+    murf_key = payload.get("murfKey")
+    assembly_key = payload.get("assemblyKey")
+    gemini_key = payload.get("geminiKey")
+    news_key = payload.get("newsKey")
+    weather_key = payload.get("weatherKey")
+    # You can make all keys required, or just some
+    if not murf_key or not assembly_key or not gemini_key or not news_key or not weather_key:
+        return {"success": False, "detail": "All keys required"}
+    USER_API_KEYS["murf"] = murf_key
+    USER_API_KEYS["assembly"] = assembly_key
+    USER_API_KEYS["gemini"] = gemini_key
+    USER_API_KEYS["news"] = news_key
+    USER_API_KEYS["weather"] = weather_key
+    return {"success": True}
+
+
 @app.post("/generate-tts", response_model=TTSResponse)
 async def generate_tts(request: TTSRequest):
     try:
-        if not TTS_AVAILABLE:
-            return TTSResponse(audio_url="", message=FALLBACK_TEXT)
-        audio_url = tts_generate(text=request.text, voice_id=request.voice_id)
+        murf_api_key = USER_API_KEYS.get("murf")
+        if not murf_api_key:
+            return TTSResponse(audio_url="", message="Murf API key not set")
+        audio_url = tts_generate(text=request.text, voice_id=request.voice_id, api_key=murf_api_key)
         if audio_url:
             return TTSResponse(audio_url=audio_url, message="Audio generated successfully")
         return TTSResponse(audio_url="", message=FALLBACK_TEXT)
@@ -408,6 +429,222 @@ async def news_status():
     except Exception as e:
         logger.exception("News status error")
         return {"available": False, "error": str(e)}
+
+
+# Weather endpoints
+@app.get("/weather/current")
+async def get_weather(city: Optional[str] = None, country: Optional[str] = None):
+    """Get current weather for a city"""
+    try:
+        from services.weather import get_current_weather, format_weather_for_speech
+        from config import DEFAULT_WEATHER_CITY
+        
+        city = city or DEFAULT_WEATHER_CITY
+        result = await get_current_weather(city, country)
+        
+        if result.get("success"):
+            weather_data = result.get("data")
+            speech_text = format_weather_for_speech(weather_data)
+            return {
+                "success": True,
+                "formatted_text": speech_text,
+                "data": weather_data,
+                "message": result.get("message")
+            }
+        else:
+            return result
+            
+    except Exception as e:
+        logger.exception("Weather current error")
+        return {"success": False, "message": str(e), "data": None}
+
+
+@app.get("/weather/forecast")
+async def get_forecast(city: Optional[str] = None, days: Optional[int] = 3):
+    """Get weather forecast for a city"""
+    try:
+        from services.weather import get_weather_forecast, format_forecast_for_speech
+        from config import DEFAULT_WEATHER_CITY
+        
+        city = city or DEFAULT_WEATHER_CITY
+        result = await get_weather_forecast(city, days)
+        
+        if result.get("success"):
+            forecast_data = result.get("data")
+            speech_text = format_forecast_for_speech(forecast_data)
+            return {
+                "success": True,
+                "formatted_text": speech_text,
+                "data": forecast_data,
+                "message": result.get("message")
+            }
+        else:
+            return result
+            
+    except Exception as e:
+        logger.exception("Weather forecast error")
+        return {"success": False, "message": str(e), "data": None}
+
+
+@app.get("/weather/air-quality")
+async def get_air(city: Optional[str] = None):
+    """Get air quality for a city"""
+    try:
+        from services.weather import get_air_quality, format_air_quality_for_speech
+        from config import DEFAULT_WEATHER_CITY
+        
+        city = city or DEFAULT_WEATHER_CITY
+        result = await get_air_quality(city)
+        
+        if result.get("success"):
+            air_data = result.get("data")
+            speech_text = format_air_quality_for_speech(air_data)
+            return {
+                "success": True,
+                "formatted_text": speech_text,
+                "data": air_data,
+                "message": result.get("message")
+            }
+        else:
+            return result
+            
+    except Exception as e:
+        logger.exception("Air quality error")
+        return {"success": False, "message": str(e), "data": None}
+
+
+@app.post("/weather/command")
+async def weather_command(request: Request):
+    """Process a natural language weather command"""
+    try:
+        body = await request.json()
+        command_text = body.get("command", "")
+        
+        from skills.weather_skill import extract_weather_command, handle_weather_command, format_weather_response
+        
+        command_type, params = extract_weather_command(command_text)
+        if command_type:
+            result = await handle_weather_command(command_type, params)
+            return {
+                "success": result.get("success", False),
+                "message": format_weather_response(result),
+                "data": result.get("data"),
+                "raw_response": result
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Not recognized as a weather command. Try 'What's the weather?' or 'Weather forecast for London'",
+                "data": None
+            }
+            
+    except Exception as e:
+        logger.exception("Weather command error")
+        return {"success": False, "message": str(e), "data": None}
+
+
+@app.get("/weather/status")
+async def weather_status():
+    """Check weather service status"""
+    try:
+        from services.weather import WEATHER_AVAILABLE
+        
+        return {
+            "available": WEATHER_AVAILABLE,
+            "message": "Weather service is ready" if WEATHER_AVAILABLE else "Weather service not configured. Add OPENWEATHER_API_KEY to .env"
+        }
+        
+    except Exception as e:
+        logger.exception("Weather status error")
+        return {"available": False, "error": str(e)}
+
+
+# API Configuration endpoints
+@app.get("/config/status")
+async def get_api_config_status():
+    """Get current API configuration status"""
+    try:
+        return {
+            "success": True,
+            "config": get_config_status()
+        }
+    except Exception as e:
+        logger.exception("Config status error")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/config/save")
+async def save_api_config(request: Request):
+    """Save user-provided API keys"""
+    try:
+        body = await request.json()
+        api_keys = body.get("api_keys", {})
+        
+        # Save the configuration
+        success = save_api_keys(api_keys)
+        
+        if success:
+            # Reload services with new keys
+            from services import llm, stt, tts, news, weather
+            
+            # Reinitialize services with new keys
+            llm.reinitialize_llm()
+            stt.reinitialize_stt()
+            tts.reinitialize_tts()
+            news.reinitialize_news()
+            weather.reinitialize_weather()
+            
+            return {
+                "success": True,
+                "message": "API configuration saved and services reloaded",
+                "config": get_config_status()
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Failed to save configuration"
+            }
+    except Exception as e:
+        logger.exception("Save config error")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/config/validate")
+async def validate_api_key(request: Request):
+    """Validate a single API key"""
+    try:
+        body = await request.json()
+        key_name = body.get("key_name")
+        key_value = body.get("key_value")
+        
+        if not key_name or not key_value:
+            return {
+                "success": False,
+                "message": "Missing key_name or key_value"
+            }
+        
+        result = api_config.validate_api_key(key_name, key_value)
+        return {
+            "success": result.get("valid", False),
+            "message": result.get("message", "Unknown error")
+        }
+    except Exception as e:
+        logger.exception("Validate key error")
+        return {"success": False, "error": str(e)}
+
+
+@app.delete("/config/clear")
+async def clear_api_config():
+    """Clear all user-provided API keys"""
+    try:
+        api_config.clear_user_config()
+        return {
+            "success": True,
+            "message": "User configuration cleared"
+        }
+    except Exception as e:
+        logger.exception("Clear config error")
+        return {"success": False, "error": str(e)}
 
 
 # Simple echo WebSocket endpoint

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Arc Nova | Advanced AI Assistant</title>
+  <link rel="stylesheet" href="/static/style_enhanced.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+</head>
+<body>
+  <!-- Settings Sidebar -->
+  <div class="settings-sidebar" id="settingsSidebar">
+    <div class="sidebar-header">
+      <h3><i class="fas fa-cog"></i> API Configuration</h3>
+      <button class="close-sidebar" onclick="toggleSettings()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    
+    <div class="sidebar-content">
+      <div class="settings-info">
+        <p><i class="fas fa-info-circle"></i> Configure your API keys to enable AI services. Keys are stored locally and prioritized over environment variables.</p>
+      </div>
+      
+      <div class="api-form" id="apiForm">
+        <!-- Gemini AI -->
+        <div class="api-group">
+          <div class="api-header">
+            <label for="gemini-key">
+              <i class="fas fa-brain"></i> Google Gemini AI
+            </label>
+            <span class="api-status" id="gemini-status"></span>
+          </div>
+          <input type="password" id="gemini-key" placeholder="AIzaSy..." class="api-input" />
+          <small>Powers the AI conversation engine</small>
+        </div>
+        
+        <!-- AssemblyAI -->
+        <div class="api-group">
+          <div class="api-header">
+            <label for="assembly-key">
+              <i class="fas fa-microphone"></i> AssemblyAI STT
+            </label>
+            <span class="api-status" id="assembly-status"></span>
+          </div>
+          <input type="password" id="assembly-key" placeholder="Your AssemblyAI key" class="api-input" />
+          <small>Converts speech to text</small>
+        </div>
+        
+        <!-- Murf TTS -->
+        <div class="api-group">
+          <div class="api-header">
+            <label for="murf-key">
+              <i class="fas fa-volume-up"></i> Murf TTS
+            </label>
+            <span class="api-status" id="murf-status"></span>
+          </div>
+          <input type="password" id="murf-key" placeholder="ap2_..." class="api-input" />
+          <small>Generates natural voice responses</small>
+        </div>
+        
+        <!-- News API -->
+        <div class="api-group">
+          <div class="api-header">
+            <label for="news-key">
+              <i class="fas fa-newspaper"></i> News API
+            </label>
+            <span class="api-status" id="news-status"></span>
+          </div>
+          <input type="password" id="news-key" placeholder="Your NewsAPI key" class="api-input" />
+          <small>Provides latest news updates</small>
+        </div>
+        
+        <!-- OpenWeatherMap -->
+        <div class="api-group">
+          <div class="api-header">
+            <label for="weather-key">
+              <i class="fas fa-cloud-sun"></i> OpenWeatherMap
+            </label>
+            <span class="api-status" id="weather-status"></span>
+          </div>
+          <input type="password" id="weather-key" placeholder="Your OpenWeather key" class="api-input" />
+          <small>Weather forecasts and air quality</small>
+        </div>
+      </div>
+      
+      <div class="settings-actions">
+        <button class="btn-save" onclick="saveAPIKeys()">
+          <i class="fas fa-save"></i> Save Configuration
+        </button>
+        <button class="btn-validate" onclick="validateAllKeys()">
+          <i class="fas fa-check-circle"></i> Validate All
+        </button>
+        <button class="btn-clear" onclick="clearAPIKeys()">
+          <i class="fas fa-trash"></i> Clear All
+        </button>
+      </div>
+      
+      <div class="settings-status" id="settingsStatus"></div>
+    </div>
+  </div>
+
+  <!-- Arc Reactor Background Animation -->
+  <div class="arc-reactor-bg">
+    <div class="reactor-core">
+      <div class="core-inner"></div>
+      <div class="energy-ring ring-1"></div>
+      <div class="energy-ring ring-2"></div>
+      <div class="energy-ring ring-3"></div>
+    </div>
+    <div class="particle-field" id="particleField"></div>
+    <canvas id="bgCanvas" class="bg-canvas"></canvas>
+  </div>
+
+  <!-- Main Interface Container -->
+  <div class="nova-container">
+    
+    <!-- Enhanced Header -->
+    <div class="nova-header">
+      <button class="settings-btn" onclick="toggleSettings()" title="API Settings">
+        <i class="fas fa-cog"></i>
+      </button>
+      
+      <div class="arc-logo">
+        <div class="arc-circle">
+          <div class="arc-core-mini"></div>
+        </div>
+      </div>
+      <h1 class="nova-title">ARC NOVA</h1>
+      <p class="nova-subtitle">Advanced Response Control | Neural Operations Virtual Assistant</p>
+      
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="status-dot" id="systemStatus"></span>
+          <span class="status-text" id="systemStatusText">INITIALIZING</span>
+        </div>
+        <div class="status-item">
+          <span class="status-text" id="sessionId">SESSION: LOADING...</span>
+        </div>
+        <div class="service-indicators">
+          <span class="service-indicator" id="llmIndicator" title="LLM Status">
+            <i class="fas fa-brain"></i>
+          </span>
+          <span class="service-indicator" id="sttIndicator" title="STT Status">
+            <i class="fas fa-microphone-alt"></i>
+          </span>
+          <span class="service-indicator" id="ttsIndicator" title="TTS Status">
+            <i class="fas fa-volume-up"></i>
+          </span>
+          <span class="service-indicator" id="newsIndicator" title="News Status">
+            <i class="fas fa-newspaper"></i>
+          </span>
+          <span class="service-indicator" id="weatherIndicator" title="Weather Status">
+            <i class="fas fa-cloud-sun"></i>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Control Panel -->
+    <div class="control-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-wave-square"></i>
+          <span>VOICE INTERFACE</span>
+        </div>
+        <div class="panel-status" id="panelStatus">
+          <span class="pulse-dot"></span>
+          READY
+        </div>
+      </div>
+
+      <!-- Enhanced Arc Control Center -->
+      <div class="arc-control-center">
+        <div class="arc-button-container">
+          <button id="recordToggle" class="arc-record-btn" type="button" onclick="toggleRecording()" aria-pressed="false" aria-label="Record or stop">
+            <div class="arc-outer-ring">
+              <div class="arc-inner-ring">
+                <div class="arc-core-button">
+                  <i class="fas fa-microphone"></i>
+                </div>
+              </div>
+            </div>
+            <div class="arc-energy-pulse"></div>
+          </button>
+          <div class="arc-label" id="recordLabel">TAP TO SPEAK</div>
+        </div>
+
+        <!-- Enhanced Voice Visualizer -->
+        <div class="voice-visualizer" id="voiceVisualizer">
+          <canvas id="waveform" width="600" height="120"></canvas>
+        </div>
+        
+        <!-- Audio Controls -->
+        <div class="audio-controls" id="audioControls" style="display:none;">
+          <button onclick="pauseAudio()" class="audio-btn" title="Pause">
+            <i class="fas fa-pause"></i>
+          </button>
+          <button onclick="resumeAudio()" class="audio-btn" title="Resume">
+            <i class="fas fa-play"></i>
+          </button>
+          <button onclick="stopAudio()" class="audio-btn" title="Stop">
+            <i class="fas fa-stop"></i>
+          </button>
+          <div class="volume-control">
+            <i class="fas fa-volume-down"></i>
+            <input type="range" id="volumeSlider" min="0" max="100" value="80" onchange="setVolume(this.value)" />
+            <i class="fas fa-volume-up"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Display -->
+      <div class="status-display">
+        <div id="uploadStatus" class="nova-status"></div>
+        <div id="typingIndicator" class="ai-processing" style="display:none" aria-live="polite" aria-label="AI is processing">
+          <div class="processing-bar">
+            <div class="processing-fill"></div>
+          </div>
+          <span class="processing-text">PROCESSING NEURAL NETWORK...</span>
+        </div>
+      </div>
+
+      <!-- Hidden audio element for AI replies (autoplays) -->
+      <audio id="replyAudio" preload="auto" style="display:none;"></audio>
+    </div>
+
+    <!-- Enhanced Holographic Chat Display -->
+    <div id="chatBubble" class="holo-display" style="display:none;">
+      <div class="holo-frame">
+        <div class="holo-content">
+          <div class="message-container">
+            <div class="message user-message">
+              <div class="message-header">
+                <i class="fas fa-user"></i>
+                <span>USER INPUT</span>
+                <span class="message-time" id="userMsgTime"></span>
+              </div>
+              <div class="message-body" id="bubbleUser"></div>
+            </div>
+            <div class="message ai-message">
+              <div class="message-header">
+                <i class="fas fa-robot"></i>
+                <span>NOVA RESPONSE</span>
+                <span class="message-time" id="aiMsgTime"></span>
+              </div>
+              <div class="message-body" id="bubbleAI"></div>
+            </div>
+          </div>
+        </div>
+        <div class="holo-scanline"></div>
+      </div>
+    </div>
+
+    <!-- Enhanced History Terminal -->
+    <div id="chatHistoryCard" class="terminal-window">
+      <div class="terminal-header">
+        <div class="terminal-title">
+          <i class="fas fa-terminal"></i>
+          <span>CONVERSATION LOG</span>
+          <span class="message-count" id="messageCount">0 messages</span>
+        </div>
+        <div class="terminal-controls">
+          <button class="terminal-btn" onclick="exportHistory()" title="Export History">
+            <i class="fas fa-download"></i>
+          </button>
+          <button class="terminal-btn" onclick="clearHistory()" title="Clear History">
+            <i class="fas fa-trash"></i>
+          </button>
+          <button class="terminal-btn" onclick="scrollHistoryToTop()" title="Scroll to Top">
+            <i class="fas fa-chevron-up"></i>
+          </button>
+          <button class="terminal-btn" onclick="scrollHistoryToBottom()" title="Scroll to Bottom">
+            <i class="fas fa-chevron-down"></i>
+          </button>
+        </div>
+      </div>
+      <div id="historyList" class="terminal-body"></div>
+    </div>
+    
+    <!-- Quick Actions Bar -->
+    <div class="quick-actions">
+      <button class="quick-btn" onclick="askWeather()" title="Weather">
+        <i class="fas fa-cloud-sun"></i>
+      </button>
+      <button class="quick-btn" onclick="askNews()" title="News">
+        <i class="fas fa-newspaper"></i>
+      </button>
+      <button class="quick-btn" onclick="askTime()" title="Time">
+        <i class="fas fa-clock"></i>
+      </button>
+      <button class="quick-btn" onclick="askJoke()" title="Tell a Joke">
+        <i class="fas fa-laugh"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div class="notification-toast" id="notificationToast">
+    <i class="notification-icon"></i>
+    <span class="notification-text"></span>
+  </div>
+
+  <script src="/static/arc_nova.js"></script>
+</body>
+</html>

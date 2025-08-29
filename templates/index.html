@@ -72,7 +72,7 @@
             </div>
             <div class="arc-energy-pulse"></div>
           </button>
-          <div class="arc-label" id="recordLabel">INITIALIZE VOICE COMMAND</div>
+          <div class="arc-label" id="recordLabel">TAP TO SPEAK</div>
         </div>
 
         <!-- Voice Visualizer -->
@@ -81,26 +81,6 @@
         </div>
       </div>
 
-      <!-- Control Options -->
-      <div class="control-options">
-        <div class="option-group">
-          <label class="option-label">VOICE PROFILE</label>
-          <select id="replyVoice" class="nova-select" aria-label="Select reply voice">
-            <option value="en-US-natalie" selected>Natalie (US)</option>
-            <option value="en-IN-ashwin">Ashwin (IN)</option>
-            <option value="en-GB-harry">Harry (UK)</option>
-          </select>
-        </div>
-        <div class="option-group">
-          <label class="option-label">AUTO-STREAM MODE</label>
-          <button id="autoToggle" class="nova-toggle" onclick="toggleAutoStream()">
-            <div class="toggle-track">
-              <div class="toggle-thumb"></div>
-            </div>
-            <span class="toggle-label">DISABLED</span>
-          </button>
-        </div>
-      </div>
 
       <!-- Status Display -->
       <div class="status-display">
@@ -163,6 +143,28 @@
       </div>
       <div id="historyList" class="terminal-body"></div>
     </div>
+
+    <!-- API Configuration Sidebar (hidden by default) -->
+    <div id="configSidebar" class="config-sidebar">
+      <h2>API Configuration</h2>
+      <form id="apiConfigForm">
+        <label for="murfKey">Murf API Key</label>
+        <input type="password" id="murfKey" name="murfKey" placeholder="Enter Murf API Key" autocomplete="off" />
+        <label for="assemblyKey">AssemblyAI API Key</label>
+        <input type="password" id="assemblyKey" name="assemblyKey" placeholder="Enter AssemblyAI API Key" autocomplete="off" />
+        <label for="geminiKey">Gemini API Key</label>
+        <input type="password" id="geminiKey" name="geminiKey" placeholder="Enter Gemini API Key" autocomplete="off" />
+        <label for="newsKey">News API Key</label>
+        <input type="password" id="newsKey" name="newsKey" placeholder="Enter News API Key" autocomplete="off" />
+        <label for="weatherKey">OpenWeather API Key</label>
+        <input type="password" id="weatherKey" name="weatherKey" placeholder="Enter OpenWeather API Key" autocomplete="off" />
+        <button type="submit" class="config-save-btn">Save Keys</button>
+      </form>
+      <div id="configStatus" class="config-status"></div>
+    </div>
+    <button id="configToggleBtn" class="config-toggle-btn" title="Configure API Keys">
+      <i class="fas fa-cog"></i>
+    </button>
   </div>
 
 
@@ -421,7 +423,7 @@
         audioPlayer.reset(); // Reset audio player for clean state
         btn.classList.add('active');
         btn.setAttribute('aria-pressed', 'true');
-        label.textContent = 'LISTENING... CLICK TO TERMINATE';
+        label.textContent = 'LISTENING... TAP TO STOP';
         if (panelStatus) {
           panelStatus.innerHTML = '<span class="pulse-dot recording"></span> RECORDING';
         }
@@ -509,8 +511,9 @@
                   console.log('🔚 Final transcript received:', message.text);
                   bubbleUser.textContent = message.text;
                   bubbleUser.style.fontWeight = '600';
-                  bubbleUser.style.color = '#1a1a1a';
+                  bubbleUser.style.color = '#ffffff';
                   bubbleUser.style.fontStyle = 'normal';
+                  bubbleUser.style.opacity = '1';
                   
                   // Update status to show turn ended
                   status.textContent = '✅ Turn complete - transcript finalized';
@@ -526,9 +529,10 @@
                   // Interim transcript - show in lighter style
                   console.log('📝 Interim transcript:', message.text);
                   bubbleUser.textContent = message.text;
-                  bubbleUser.style.fontWeight = '400';
-                  bubbleUser.style.color = '#666';
+                  bubbleUser.style.fontWeight = '500';
+                  bubbleUser.style.color = '#cccccc';
                   bubbleUser.style.fontStyle = 'italic';
+                  bubbleUser.style.opacity = '0.8';
                   
                   // Update status to show listening
                   status.textContent = '🎤 Listening...';
@@ -608,7 +612,7 @@
           btn.classList.remove('active');
           btn.setAttribute('aria-pressed', 'false');
           isRecording = false;
-          label.textContent = 'INITIALIZE VOICE COMMAND';
+          label.textContent = 'TAP TO SPEAK';
           if (panelStatus) {
             panelStatus.innerHTML = '<span class="pulse-dot error"></span> ERROR';
           }
@@ -626,7 +630,7 @@
         const panelStatus2 = document.getElementById('panelStatus');
         btn2.classList.remove('active');
         btn2.setAttribute('aria-pressed', 'false');
-        label2.textContent = 'INITIALIZE VOICE COMMAND';
+        label2.textContent = 'TAP TO SPEAK';
         if (panelStatus2) {
           panelStatus2.innerHTML = '<span class="pulse-dot online"></span> READY';
         }
@@ -854,6 +858,43 @@
       }
     });
   </script>
+  <script>
+const configSidebar = document.getElementById('configSidebar');
+const configToggleBtn = document.getElementById('configToggleBtn');
+const apiConfigForm = document.getElementById('apiConfigForm');
+const configStatus = document.getElementById('configStatus');
+
+// Toggle sidebar
+configToggleBtn.onclick = () => {
+  configSidebar.classList.toggle('active');
+};
+
+// Save API keys to backend
+apiConfigForm.onsubmit = async (e) => {
+  e.preventDefault();
+  const murfKey = document.getElementById('murfKey').value.trim();
+  const assemblyKey = document.getElementById('assemblyKey').value.trim();
+  const geminiKey = document.getElementById('geminiKey').value.trim();
+  const newsKey = document.getElementById('newsKey').value.trim();
+  const weatherKey = document.getElementById('weatherKey').value.trim();
+  configStatus.textContent = "Saving...";
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ murfKey, assemblyKey, geminiKey, newsKey, weatherKey })
+    });
+    const data = await res.json();
+    if (data.success) {
+      configStatus.textContent = "API keys saved!";
+    } else {
+      configStatus.textContent = "Error: " + (data.detail || "Could not save keys");
+    }
+  } catch (err) {
+    configStatus.textContent = "Network error";
+  }
+};
+</script>
 </body>
 </html>
 
