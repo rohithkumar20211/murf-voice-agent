@@ -434,7 +434,7 @@
 
           // Prepare WebSocket before audio graph so we can stream PCM16
           const sessionId = getOrCreateSessionId();
-          ws = new WebSocket(`ws://${window.location.host}/ws/audio?session=${sessionId}`);
+          ws = new WebSocket(`wss://${window.location.host}/ws/audio?session=${sessionId}`);
           ws.binaryType = 'arraybuffer';
 
           // Display transcripts sent back from server with turn detection
@@ -920,4 +920,3 @@ apiConfigForm.onsubmit = async (e) => {
 </div>
 </body>
 </html>
-
