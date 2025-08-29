@@ -16,6 +16,7 @@ env/
 .env.*.local
 
 WARP.md
+user_config.json
 
 # OS cruft
 .DS_Store
