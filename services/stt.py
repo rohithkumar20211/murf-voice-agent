@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Callable, Awaitable
 import asyncio
 from utils.logger import logger
+from api_config import get_api_key
 
 STT_AVAILABLE = False
 _transcriber = None
@@ -43,6 +44,10 @@ initialize_stt()
 
 def stt_transcribe_bytes(audio_bytes: bytes) -> Tuple[Optional[str], str]:
     """Return (text, status) using non-streaming API (file upload style)."""
+    assembly_key = get_api_key("ASSEMBLYAI_API_KEY")
+    if not assembly_key:
+        return None, "AssemblyAI API key not set"
+    
     if not STT_AVAILABLE or _transcriber is None:
         return None, "unavailable"
     try:

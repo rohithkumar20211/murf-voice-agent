@@ -39,38 +39,20 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 CHAT_HISTORY: Dict[str, List[Dict[str, Any]]] = {}
 MAX_HISTORY_MESSAGES = 50
 
-USER_API_KEYS = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def get_home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/api/config")
-async def save_api_keys(payload: dict = Body(...)):
-    murf_key = payload.get("murfKey")
-    assembly_key = payload.get("assemblyKey")
-    gemini_key = payload.get("geminiKey")
-    news_key = payload.get("newsKey")
-    weather_key = payload.get("weatherKey")
-    # You can make all keys required, or just some
-    if not murf_key or not assembly_key or not gemini_key or not news_key or not weather_key:
-        return {"success": False, "detail": "All keys required"}
-    USER_API_KEYS["murf"] = murf_key
-    USER_API_KEYS["assembly"] = assembly_key
-    USER_API_KEYS["gemini"] = gemini_key
-    USER_API_KEYS["news"] = news_key
-    USER_API_KEYS["weather"] = weather_key
-    return {"success": True}
+
 
 
 @app.post("/generate-tts", response_model=TTSResponse)
 async def generate_tts(request: TTSRequest):
     try:
-        murf_api_key = USER_API_KEYS.get("murf")
-        if not murf_api_key:
-            return TTSResponse(audio_url="", message="Murf API key not set")
-        audio_url = tts_generate(text=request.text, voice_id=request.voice_id, api_key=murf_api_key)
+        # The tts_generate function will now correctly get the key from api_config
+        audio_url = tts_generate(text=request.text, voice_id=request.voice_id)
         if audio_url:
             return TTSResponse(audio_url=audio_url, message="Audio generated successfully")
         return TTSResponse(audio_url="", message=FALLBACK_TEXT)

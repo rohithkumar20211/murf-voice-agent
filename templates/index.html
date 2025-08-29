@@ -871,33 +871,46 @@ configToggleBtn.onclick = () => {
 };
 
 // Save API keys to backend
+// ...
+// Save API keys to backend
 apiConfigForm.onsubmit = async (e) => {
   e.preventDefault();
-  const murfKey = document.getElementById('murfKey').value.trim();
-  const assemblyKey = document.getElementById('assemblyKey').value.trim();
-  const geminiKey = document.getElementById('geminiKey').value.trim();
-  const newsKey = document.getElementById('newsKey').value.trim();
-  const weatherKey = document.getElementById('weatherKey').value.trim();
-  configStatus.textContent = "Saving...";
+  configStatus.textContent = "Saving and reloading services...";
+
+  // Structure the keys for the correct endpoint
+  const apiKeys = {
+    "MURF_API_KEY": document.getElementById('murfKey').value.trim(),
+    "ASSEMBLYAI_API_KEY": document.getElementById('assemblyKey').value.trim(),
+    "GEMINI_API_KEY": document.getElementById('geminiKey').value.trim(),
+    "NEWS_API_KEY": document.getElementById('newsKey').value.trim(),
+    "OPENWEATHER_API_KEY": document.getElementById('weatherKey').value.trim(),
+  };
+
   try {
-    const res = await fetch('/api/config', {
+    // Call the correct endpoint: /config/save
+    const res = await fetch('/config/save', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ murfKey, assemblyKey, geminiKey, newsKey, weatherKey })
+      body: JSON.stringify({ api_keys: apiKeys })
     });
+
     const data = await res.json();
-    if (data.success) {
-      configStatus.textContent = "API keys saved!";
-      recordToggle.disabled = false; // Enable Tap to Speak button
+
+    if (res.ok && data.success) {
+      configStatus.textContent = "✅ Configuration saved successfully!";
+      recordToggle.disabled = false; // Enable the microphone button
+      // Optional: close sidebar after saving
+      // configSidebar.classList.remove('active');
     } else {
-      configStatus.textContent = "Error: " + (data.detail || "Could not save keys");
+      configStatus.textContent = "❌ Error: " + (data.error || data.message || "Could not save keys");
       recordToggle.disabled = true;
     }
   } catch (err) {
-    configStatus.textContent = "Network error";
+    configStatus.textContent = "❌ Network error. Is the server running?";
     recordToggle.disabled = true;
   }
 };
+//...
 </script>
 
 <!-- Add this popup HTML near the end of your body -->

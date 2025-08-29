@@ -1,0 +1,10 @@
+{
+  "api_keys": {
+    "MURF_API_KEY": "ap2_b69c992b-1779-4427-bf08-ee4e76443cbd",
+    "ASSEMBLYAI_API_KEY": "8aa0cbddb25b4f9491b744b6be88287d",
+    "GEMINI_API_KEY": "AIzaSyAcFN3LyMPJUmciIH8bTNnL3BR0wV9YvuQ",
+    "NEWS_API_KEY": "ccc7df56143b4fae808ca1cc745e49af",
+    "OPENWEATHER_API_KEY": "0c1a3c0c2e776ab1a95a2a22620c9267"
+  },
+  "version": "1.0"
+}

@@ -7,7 +7,7 @@ import base64
 from typing import Optional, Callable
 import websockets
 from utils.logger import logger
-from config import MURF_API_KEY
+from api_config import get_api_key
 
 # Note: Murf doesn't currently provide a WebSocket API for streaming
 # This is a placeholder URL - we'll use HTTP fallback instead
@@ -16,7 +16,7 @@ MURF_WS_URL = None  # WebSocket not available, using HTTP fallback
 
 class MurfWebSocketClient:
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or MURF_API_KEY
+        self.api_key = api_key or get_api_key("MURF_API_KEY")
         self.websocket = None
         self.is_connected = False
         
