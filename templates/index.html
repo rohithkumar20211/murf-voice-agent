@@ -62,7 +62,7 @@
       <!-- Arc Reactor Style Mic Button -->
       <div class="arc-control-center">
         <div class="arc-button-container">
-          <button id="recordToggle" class="arc-record-btn" type="button" onclick="toggleRecording()" aria-pressed="false" aria-label="Record or stop">
+          <button id="recordToggle" class="arc-record-btn" type="button" onclick="toggleRecording()" aria-pressed="false" aria-label="Record or stop" disabled>
             <div class="arc-outer-ring">
               <div class="arc-inner-ring">
                 <div class="arc-core-button">
@@ -863,6 +863,7 @@ const configSidebar = document.getElementById('configSidebar');
 const configToggleBtn = document.getElementById('configToggleBtn');
 const apiConfigForm = document.getElementById('apiConfigForm');
 const configStatus = document.getElementById('configStatus');
+const recordToggle = document.getElementById('recordToggle');
 
 // Toggle sidebar
 configToggleBtn.onclick = () => {
@@ -887,14 +888,23 @@ apiConfigForm.onsubmit = async (e) => {
     const data = await res.json();
     if (data.success) {
       configStatus.textContent = "API keys saved!";
+      recordToggle.disabled = false; // Enable Tap to Speak button
     } else {
       configStatus.textContent = "Error: " + (data.detail || "Could not save keys");
+      recordToggle.disabled = true;
     }
   } catch (err) {
     configStatus.textContent = "Network error";
+    recordToggle.disabled = true;
   }
 };
 </script>
+
+<!-- Add this popup HTML near the end of your body -->
+<div id="apiKeyPopup" class="api-key-popup" style="display:none;">
+  <span>Please fill in all API keys first.<br>
+  Click the <i class="fas fa-cog"></i> settings icon in the top right corner.</span>
+</div>
 </body>
 </html>
 

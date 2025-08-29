@@ -22,8 +22,8 @@ from services.stt import stt_transcribe_bytes, STT_AVAILABLE
 from services.tts import tts_generate, tts_get_voices, TTS_AVAILABLE
 from services.llm import llm_generate, LLM_AVAILABLE
 from utils.text import chunk_text, build_prompt_from_history
-from config import FALLBACK_TEXT
 from utils.logger import logger
+from config import FALLBACK_TEXT
 from personas import get_persona_voice
 from api_config import api_config, get_api_key, save_api_keys, get_config_status
 
